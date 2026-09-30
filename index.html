@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#7a3e1d">
+  <title>Librarium</title>
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <header class="cabecera">
+    <div class="fila">
+      <h1>Librarium</h1>
+      <button id="btn-recargar" class="icono" type="button" title="Recargar" aria-label="Recargar">⟳</button>
+      <button id="btn-ajustes" class="icono" type="button" title="Ajustes" aria-label="Ajustes">⚙</button>
+    </div>
+    <input id="buscar" type="search" placeholder="Buscar título, autor o ubicación" autocomplete="off" aria-label="Buscar">
+    <nav id="pestanas" class="pestanas" role="tablist"></nav>
+  </header>
+
+  <main>
+    <p id="estado" class="estado" role="status"></p>
+    <p id="contador" class="contador"></p>
+    <ul id="lista" class="lista"></ul>
+    <p id="vacio" class="vacio" hidden></p>
+  </main>
+
+  <button id="btn-alta" class="flotante" type="button">＋ Añadir</button>
+
+  <div id="aviso" class="aviso" role="status" aria-live="polite"></div>
+
+  <!-- Ajustes -->
+  <dialog id="dlg-ajustes">
+    <form id="form-ajustes" class="formulario">
+      <h2>Ajustes</h2>
+      <p class="ayuda">Se guardan solo en este dispositivo.</p>
+      <label>Tu nombre
+        <input name="nombre" required autocomplete="given-name">
+      </label>
+      <label>Repositorio de datos
+        <input name="repo" required placeholder="usuario/coleccion-datos" autocapitalize="off" spellcheck="false">
+      </label>
+      <label>Token de GitHub
+        <input name="token" type="password" required autocomplete="off" spellcheck="false">
+      </label>
+      <label><span>Clave de TMDB <span class="opcional">(opcional, para películas y series)</span></span>
+        <input name="tmdb" autocomplete="off" spellcheck="false">
+      </label>
+      <p id="ajustes-error" class="error" role="alert"></p>
+      <div class="botones">
+        <button id="ajustes-cancelar" type="button" class="secundario">Cancelar</button>
+        <button id="ajustes-guardar" type="submit">Guardar y conectar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Detalle -->
+  <dialog id="dlg-detalle">
+    <div id="detalle-contenido" class="detalle"></div>
+    <form method="dialog" class="botones">
+      <button type="submit">Cerrar</button>
+    </form>
+  </dialog>
+
+  <!-- Alta -->
+  <dialog id="dlg-alta">
+    <form id="form-alta" class="formulario" novalidate>
+      <h2>Añadir</h2>
+      <label>Tipo
+        <select name="tipo" id="alta-tipo"></select>
+      </label>
+      <label id="campo-subtipo">Es
+        <select name="subtipo">
+          <option value="pelicula">Película documental</option>
+          <option value="serie">Docuserie</option>
+        </select>
+      </label>
+      <label id="campo-isbn"><span>ISBN <span class="opcional">(opcional)</span></span>
+        <input name="isbn" inputmode="numeric" autocomplete="off">
+      </label>
+      <label>Título
+        <input name="titulo" required autocomplete="off">
+      </label>
+      <label><span id="etiqueta-autor">Autor</span>
+        <input name="autor" autocomplete="off">
+      </label>
+      <label>Año
+        <input name="anio" type="number" inputmode="numeric" min="0" max="3000">
+      </label>
+      <label id="campo-temporadas">Temporadas que tenéis
+        <input name="temporadas" placeholder="por ejemplo 1-3, 5" autocomplete="off">
+      </label>
+      <label>Formato
+        <input name="formato" list="dl-formatos" autocomplete="off">
+      </label>
+      <label>Ubicación
+        <input name="ubicacion" list="dl-ubicaciones" required autocomplete="off">
+      </label>
+      <label>Notas
+        <textarea name="notas" rows="2"></textarea>
+      </label>
+      <datalist id="dl-formatos"></datalist>
+      <datalist id="dl-ubicaciones"></datalist>
+
+      <p id="alta-error" class="error" role="alert"></p>
+      <div id="alta-parecidos" class="parecidos" hidden>
+        <p>Se parece a lo que ya tenéis:</p>
+        <ul></ul>
+        <button id="alta-forzar" type="button" class="secundario">Añadir igualmente</button>
+      </div>
+
+      <div class="botones">
+        <button id="alta-cancelar" type="button" class="secundario">Cancelar</button>
+        <button id="alta-guardar" type="submit">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
