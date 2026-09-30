@@ -95,6 +95,13 @@ export function formatosDe(tipo, items) {
   ]);
 }
 
+function leerAnio(texto) {
+  if (!limpiar(texto)) return null;
+  const anio = Number(texto);
+  if (!Number.isInteger(anio) || anio < 0 || anio > 3000) throw new ValidacionError('El año no es válido.');
+  return anio;
+}
+
 /**
  * Crea un título nuevo a partir de los campos del formulario.
  * Lanza ValidacionError con un mensaje para mostrar si falta algo.
@@ -115,12 +122,7 @@ export function construirItem(tipo, campos, { nombre, fecha = hoy(), generarId =
     id = generarId();
   }
 
-  let anio = null;
-  if (limpiar(campos.anio)) {
-    anio = Number(campos.anio);
-    if (!Number.isInteger(anio) || anio < 0 || anio > 3000) throw new ValidacionError('El año no es válido.');
-  }
-
+  const anio = leerAnio(campos.anio);
   const formato = limpiar(campos.formato);
   const item = { id, titulo };
   if (tipo === 'documentales') item.subtipo = campos.subtipo === 'serie' ? 'serie' : 'pelicula';
@@ -146,4 +148,64 @@ export function construirItem(tipo, campos, { nombre, fecha = hoy(), generarId =
     item.ubicacion = '';
   }
   return item;
+}
+
+/** Valida las filas de temporadas del formulario de edición y las ordena por número. */
+export function validarTemporadas(filas = []) {
+  const vistas = new Set();
+  const temporadas = filas.map((fila) => {
+    const num = Number(fila.num);
+    if (!Number.isInteger(num) || num < 1 || num > 100) throw new ValidacionError(`El número de temporada «${fila.num}» no es válido.`);
+    if (vistas.has(num)) throw new ValidacionError(`La temporada ${num} está repetida.`);
+    vistas.add(num);
+    const ubicacion = limpiar(fila.ubicacion);
+    if (!ubicacion) throw new ValidacionError(`Falta la ubicación de la temporada ${num}.`);
+    return { num, formato: limpiar(fila.formato), ubicacion };
+  });
+  if (!temporadas.length) throw new ValidacionError('Una serie necesita al menos una temporada.');
+  return temporadas.sort((a, b) => a.num - b.num);
+}
+
+/**
+ * Aplica los campos del formulario de edición sobre una copia del título.
+ * El tipo, el subtipo y el id no cambian. Las series reciben `campos.temporadasDetalle`.
+ */
+export function editarItem(original, tipo, campos, { nombre, fecha = hoy() }) {
+  const item = structuredClone(original);
+  item.titulo = limpiar(campos.titulo);
+  if (!item.titulo) throw new ValidacionError('El título es obligatorio.');
+  item.autor = limpiar(campos.autor);
+  item.anio = leerAnio(campos.anio);
+  item.notas = String(campos.notas ?? '').trim();
+  if (llevaTemporadas(tipo, original.subtipo)) {
+    item.temporadas = validarTemporadas(campos.temporadasDetalle);
+  } else {
+    item.formato = limpiar(campos.formato);
+    item.ubicacion = limpiar(campos.ubicacion);
+    if (!item.ubicacion) throw new ValidacionError('La ubicación es obligatoria.');
+  }
+  item.mod_por = nombre;
+  item.mod_fecha = fecha;
+  return item;
+}
+
+const sinMarcas = ({ mod_por, mod_fecha, ...resto }) => JSON.stringify(resto);
+
+/** true si la edición no cambia nada salvo quién y cuándo. */
+export function sinCambios(original, editado) {
+  return sinMarcas(original) === sinMarcas(editado);
+}
+
+/**
+ * Lleva a la versión más reciente (`fresco`) solo los campos que esta edición ha cambiado,
+ * para no pisar lo que otra persona haya cambiado a la vez en otros campos.
+ */
+export function aplicarCambios(fresco, original, editado) {
+  const resultado = { ...fresco };
+  for (const clave of new Set([...Object.keys(original), ...Object.keys(editado)])) {
+    if (JSON.stringify(original[clave]) === JSON.stringify(editado[clave])) continue;
+    if (editado[clave] === undefined) delete resultado[clave];
+    else resultado[clave] = editado[clave];
+  }
+  return resultado;
 }

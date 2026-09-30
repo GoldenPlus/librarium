@@ -1,52 +1,32 @@
-// Interfaz: pestañas, listado, búsqueda, ficha, ajustes y alta manual.
+// Interfaz: pestañas, listado, búsqueda, ficha, sagas, ajustes y arranque.
 
-import { TIPOS, TIPO, construirItem, dondeEsta, formatosDe, hoy, llevaTemporadas, resumirTemporadas, ubicacionesDe } from './modelo.js';
-import { leerConfig, guardarConfig, configCompleta, normalizarRepo } from './config.js';
+import { TIPOS, TIPO, dondeEsta, resumirTemporadas } from './modelo.js';
+import { guardarConfig, normalizarRepo } from './config.js';
 import { crearCliente } from './github.js';
-import { crearAlmacen } from './almacen.js';
 import { terminosDe, coincide } from './busqueda.js';
-import { buscarDuplicados, comprobarDuplicados, DuplicadoError, ParecidoError } from './duplicados.js';
+import { estadoSaga } from './sagas.js';
 import { compararTitulos, limpiar } from './texto.js';
+import { app, sagaDe } from './estado.js';
+import { $, el, aviso, fechaLegible } from './dom.js';
+import { abrirAlta, abrirEdicion, iniciarFormulario } from './formulario.js';
 
-const $ = (selector) => document.querySelector(selector);
+const CLAVE_AGRUPAR = 'librarium.agrupar';
 
-function el(etiqueta, props = {}, ...hijos) {
-  const nodo = document.createElement(etiqueta);
-  for (const [clave, valor] of Object.entries(props)) {
-    if (valor == null || valor === false) continue;
-    if (clave === 'class') nodo.className = valor;
-    else if (clave.startsWith('on')) nodo.addEventListener(clave.slice(2), valor);
-    else nodo.setAttribute(clave, valor === true ? '' : valor);
-  }
-  nodo.append(...hijos.flat().filter((h) => h != null && h !== false && h !== ''));
-  return nodo;
-}
-
-const almacen = crearAlmacen();
-let config = leerConfig();
-let cliente = configCompleta(config) ? crearCliente(config) : null;
 let pestana = 'todo';
 let terminos = [];
-
-// ---------- Mensajes
-
-let temporizadorAviso;
-function aviso(texto) {
-  const nodo = $('#aviso');
-  nodo.textContent = texto;
-  nodo.classList.add('visible');
-  clearTimeout(temporizadorAviso);
-  temporizadorAviso = setTimeout(() => nodo.classList.remove('visible'), 3000);
+let agrupar = false;
+try {
+  agrupar = localStorage.getItem(CLAVE_AGRUPAR) === '1';
+} catch {
+  // Sin almacenamiento: se empieza sin agrupar.
 }
+/** Lo que muestra ahora la ficha: { tipo, item } o null si muestra una saga. */
+let fichaActual = null;
 
 function mostrarEstado(texto, esError = false) {
   const nodo = $('#estado');
   nodo.textContent = texto;
   nodo.classList.toggle('error', esError);
-}
-
-function fechaLegible(iso) {
-  return iso ? new Date(iso).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : '';
 }
 
 // ---------- Listado
@@ -70,73 +50,122 @@ function pintarPestanas() {
 }
 
 function portada(item, tipo) {
-  if (/^https:\/\//.test(item.portada ?? '')) return el('img', { class: 'portada', src: item.portada, alt: '', loading: 'lazy' });
+  if (/^https:\/\//.test(item?.portada ?? '')) return el('img', { class: 'portada', src: item.portada, alt: '', loading: 'lazy' });
   return el('div', { class: 'portada vacia', 'aria-hidden': 'true' }, TIPO[tipo].icono);
 }
 
 function lineaSecundaria(item) {
   const partes = [item.autor, item.anio];
   if (item.temporadas?.length) partes.push(`T. ${resumirTemporadas(item.temporadas)}`);
+  if (item.saga) partes.push(`${sagaDe(item.saga).nombre} #${item.saga.orden}`);
   return partes.filter(Boolean).join(' · ');
 }
 
-function entradasVisibles() {
+function miembrosDe(saga) {
+  return app.almacen
+    .items(saga.tipo)
+    .filter((it) => it.saga?.id === saga.id)
+    .sort((a, b) => a.saga.orden - b.saga.orden || compararTitulos(a.titulo, b.titulo));
+}
+
+/** Tarjetas a mostrar: títulos sueltos y, si se agrupa, una tarjeta por saga. */
+function tarjetasVisibles() {
   const tipos = pestana === 'todo' ? TIPOS.map((t) => t.clave) : [pestana];
-  return tipos
-    .flatMap((tipo) => almacen.items(tipo).map((item) => ({ tipo, item })))
-    .filter(({ item }) => coincide(item, terminos))
-    .sort((a, b) => compararTitulos(a.item.titulo, b.item.titulo));
+  const titulos = tipos
+    .flatMap((tipo) => app.almacen.items(tipo).map((item) => ({ tipo, item })))
+    .filter(({ item }) => coincide(item, terminos, sagaDe(item.saga)?.nombre));
+
+  const tarjetas = [];
+  const sagas = new Map();
+  for (const entrada of titulos) {
+    if (agrupar && entrada.item.saga) {
+      const saga = sagaDe(entrada.item.saga);
+      if (!sagas.has(saga.id)) {
+        const tarjeta = { saga, tipo: entrada.tipo, nombre: saga.nombre };
+        sagas.set(saga.id, tarjeta);
+        tarjetas.push(tarjeta);
+      }
+    } else {
+      tarjetas.push({ ...entrada, nombre: entrada.item.titulo });
+    }
+  }
+  return tarjetas.sort((a, b) => compararTitulos(a.nombre, b.nombre));
+}
+
+function tarjetaTitulo({ tipo, item }) {
+  return el('button', { class: 'tarjeta', type: 'button', onclick: () => abrirDetalle(tipo, item) },
+    portada(item, tipo),
+    el('div', { class: 'info' },
+      el('strong', {}, item.titulo),
+      el('span', { class: 'linea' }, lineaSecundaria(item)),
+      el('span', { class: 'ubic' }, dondeEsta(item) && `📍 ${dondeEsta(item)}`),
+    ),
+    pestana === 'todo' && el('span', { class: 'chip' }, TIPO[tipo].singular),
+  );
+}
+
+function tarjetaSaga({ tipo, saga }) {
+  const miembros = miembrosDe(saga);
+  const ubicaciones = [...new Set(miembros.map(dondeEsta).filter(Boolean))].join(', ');
+  return el('button', { class: 'tarjeta', type: 'button', onclick: () => abrirSaga(saga) },
+    portada(miembros.find((m) => m.portada), tipo),
+    el('div', { class: 'info' },
+      el('strong', {}, saga.nombre),
+      el('span', { class: 'linea' }, `Saga · ${estadoSaga(saga, miembros).texto}`),
+      el('span', { class: 'ubic' }, ubicaciones && `📍 ${ubicaciones}`),
+    ),
+    el('span', { class: 'chip' }, pestana === 'todo' ? `Saga · ${TIPO[tipo].singular}` : 'Saga'),
+  );
 }
 
 function render() {
-  const entradas = entradasVisibles();
-  $('#lista').replaceChildren(
-    ...entradas.map(({ tipo, item }) =>
-      el('li', {},
-        el('button', { class: 'tarjeta', type: 'button', onclick: () => abrirDetalle(tipo, item) },
-          portada(item, tipo),
-          el('div', { class: 'info' },
-            el('strong', {}, item.titulo),
-            el('span', { class: 'linea' }, lineaSecundaria(item)),
-            el('span', { class: 'ubic' }, dondeEsta(item) && `📍 ${dondeEsta(item)}`),
-          ),
-          pestana === 'todo' && el('span', { class: 'chip' }, TIPO[tipo].singular),
-        ),
-      ),
-    ),
-  );
+  const tarjetas = tarjetasVisibles();
+  $('#lista').replaceChildren(...tarjetas.map((t) => el('li', {}, t.saga ? tarjetaSaga(t) : tarjetaTitulo(t))));
 
-  const n = entradas.length;
-  $('#contador').textContent = n ? `${n} ${n === 1 ? 'título' : 'títulos'}` : '';
+  const n = tarjetas.length;
+  const unidad = agrupar ? (n === 1 ? 'elemento' : 'elementos') : n === 1 ? 'título' : 'títulos';
+  $('#contador').textContent = n ? `${n} ${unidad}` : '';
   const vacio = $('#vacio');
-  vacio.hidden = n > 0 || !almacen.fecha;
+  vacio.hidden = n > 0 || !app.almacen.fecha;
   vacio.textContent = terminos.length ? 'Nada coincide con la búsqueda.' : 'Todavía no hay nada aquí. Pulsa «Añadir».';
 }
 
 async function recargar() {
-  if (!cliente) return;
+  if (!app.cliente) return;
   if (!navigator.onLine) {
-    mostrarEstado(almacen.fecha ? `Sin conexión. Mostrando la copia del ${fechaLegible(almacen.fecha)}.` : 'Sin conexión.');
+    const fecha = app.almacen.fecha;
+    mostrarEstado(fecha ? `Sin conexión. Mostrando la copia del ${fechaLegible(fecha)}.` : 'Sin conexión.');
     return;
   }
   const boton = $('#btn-recargar');
   boton.disabled = true;
   mostrarEstado('Cargando…');
   try {
-    await almacen.recargar(cliente);
+    await app.almacen.recargar(app.cliente);
     mostrarEstado('');
     render();
   } catch (e) {
-    const copia = almacen.fecha ? ` Mostrando la copia del ${fechaLegible(almacen.fecha)}.` : '';
-    mostrarEstado(e.message + copia, true);
+    const fecha = app.almacen.fecha;
+    mostrarEstado(e.message + (fecha ? ` Mostrando la copia del ${fechaLegible(fecha)}.` : ''), true);
   } finally {
     boton.disabled = false;
   }
 }
 
-// ---------- Ficha de detalle
+// ---------- Ficha de detalle y de saga
+
+function prepararFicha(actual) {
+  fichaActual = actual;
+  $('#detalle-error').textContent = '';
+  $('#detalle-editar').hidden = !actual;
+  $('#detalle-borrar').hidden = !actual;
+  const dialogo = $('#dlg-detalle');
+  if (!dialogo.open) dialogo.showModal();
+  dialogo.scrollTop = 0;
+}
 
 function abrirDetalle(tipo, item) {
+  const saga = sagaDe(item.saga);
   const filas = [
     ['Tipo', item.subtipo === 'serie' ? 'Docuserie' : TIPO[tipo].singular],
     [TIPO[tipo].autor, item.autor],
@@ -145,6 +174,9 @@ function abrirDetalle(tipo, item) {
     ['Ubicación', item.ubicacion],
     ['Temporadas', item.temporadas?.length &&
       el('ul', {}, item.temporadas.map((t) => el('li', {}, [`T${t.num}`, t.formato, t.ubicacion].filter(Boolean).join(' · '))))],
+    ['Saga', saga &&
+      el('button', { type: 'button', class: 'enlace', onclick: () => abrirSaga(saga) },
+        `${saga.nombre} · nº ${item.saga.orden} (${estadoSaga(saga, miembrosDe(saga)).texto})`)],
     ['Notas', item.notas],
     ['Alta', [item.alta_por, item.alta_fecha].filter(Boolean).join(', ')],
     ['Modificado', [item.mod_por, item.mod_fecha].filter(Boolean).join(', ')],
@@ -155,19 +187,63 @@ function abrirDetalle(tipo, item) {
     el('div', { class: 'cabeza' }, portada(item, tipo), el('h2', {}, item.titulo)),
     el('dl', {}, filas.flatMap(([etiqueta, valor]) => [el('dt', {}, etiqueta), el('dd', {}, valor)])),
   );
-  $('#dlg-detalle').showModal();
+  prepararFicha({ tipo, item });
+}
+
+function abrirSaga(saga) {
+  const miembros = miembrosDe(saga);
+  const estado = estadoSaga(saga, miembros);
+  $('#detalle-contenido').replaceChildren(
+    el('div', {},
+      el('h2', {}, saga.nombre),
+      el('p', { class: 'subtitulo' }, `Saga de ${TIPO[saga.tipo].nombre.toLowerCase()} · tenéis ${estado.texto}`),
+    ),
+    estado.faltan.length > 0 && el('p', {}, `Faltan: ${estado.faltan.join(', ')}`),
+    el('ol', {},
+      miembros.map((item) =>
+        el('li', { value: item.saga.orden },
+          el('button', { type: 'button', class: 'enlace', onclick: () => abrirDetalle(saga.tipo, item) }, item.titulo),
+          dondeEsta(item) && ` — ${dondeEsta(item)}`,
+        ),
+      ),
+    ),
+  );
+  prepararFicha(null);
+}
+
+async function borrar() {
+  const { tipo, item } = fichaActual;
+  if (!confirm(`¿Eliminar «${item.titulo}»?\nSe podría recuperar desde el historial del repo de datos.`)) return;
+  if (!navigator.onLine) {
+    $('#detalle-error').textContent = 'Sin conexión: no se puede eliminar ahora.';
+    return;
+  }
+  const boton = $('#detalle-borrar');
+  boton.disabled = true;
+  try {
+    const resultado = await app.cliente.actualizar(
+      `${tipo}.json`,
+      (datos) => (datos.items.some((it) => it.id === item.id) ? { ...datos, items: datos.items.filter((it) => it.id !== item.id) } : null),
+      `Baja: ${item.titulo} (por ${app.config.nombre})`,
+    );
+    app.almacen.fijar(tipo, resultado.datos);
+    $('#dlg-detalle').close();
+    render();
+    aviso(`«${item.titulo}» eliminado.`);
+  } catch (e) {
+    $('#detalle-error').textContent = e.message;
+  } finally {
+    boton.disabled = false;
+  }
 }
 
 // ---------- Ajustes
 
 function abrirAjustes() {
   const f = $('#form-ajustes');
-  f.nombre.value = config.nombre;
-  f.repo.value = config.repo;
-  f.token.value = config.token;
-  f.tmdb.value = config.tmdb;
+  for (const campo of ['nombre', 'repo', 'token', 'tmdb']) f[campo].value = app.config[campo];
   $('#ajustes-error').textContent = '';
-  $('#ajustes-cancelar').hidden = !cliente;
+  $('#ajustes-cancelar').hidden = !app.cliente;
   $('#dlg-ajustes').showModal();
 }
 
@@ -185,15 +261,15 @@ async function guardarAjustes(evento) {
   boton.textContent = 'Comprobando…';
   error.textContent = '';
   try {
-    const nuevoCliente = crearCliente(nueva);
-    await almacen.recargar(nuevoCliente);
+    const cliente = crearCliente(nueva);
+    await app.almacen.recargar(cliente);
     guardarConfig(nueva);
-    config = nueva;
-    cliente = nuevoCliente;
+    app.config = nueva;
+    app.cliente = cliente;
     $('#dlg-ajustes').close();
     mostrarEstado('');
     render();
-    aviso(`Conectado. Hola, ${config.nombre}.`);
+    aviso(`Conectado. Hola, ${nueva.nombre}.`);
   } catch (e) {
     error.textContent = e.message;
   } finally {
@@ -202,150 +278,59 @@ async function guardarAjustes(evento) {
   }
 }
 
-// ---------- Alta manual
-
-const formAlta = () => $('#form-alta');
-
-function rellenarDatalist(selector, valores) {
-  $(selector).replaceChildren(...valores.map((v) => el('option', { value: v })));
-}
-
-function ajustarFormularioAlta() {
-  const f = formAlta();
-  const tipo = f.tipo.value;
-  $('#campo-isbn').hidden = !TIPO[tipo].isbn;
-  $('#campo-subtipo').hidden = tipo !== 'documentales';
-  $('#campo-temporadas').hidden = !llevaTemporadas(tipo, f.subtipo.value);
-  $('#etiqueta-autor').textContent = TIPO[tipo].autor;
-  rellenarDatalist('#dl-formatos', formatosDe(tipo, almacen.items(tipo)));
-  rellenarDatalist('#dl-ubicaciones', ubicacionesDe(TIPOS.flatMap((t) => almacen.items(t.clave))));
-}
-
-function limpiarMensajesAlta() {
-  $('#alta-error').textContent = '';
-  $('#alta-parecidos').hidden = true;
-}
-
-function mostrarParecidos(parecidos) {
-  $('#alta-parecidos ul').replaceChildren(
-    ...parecidos.slice(0, 5).map((it) =>
-      el('li', {}, `«${it.titulo}»`, it.autor && ` — ${it.autor}`, dondeEsta(it) && ` (${dondeEsta(it)})`),
-    ),
-  );
-  $('#alta-parecidos').hidden = false;
-  $('#alta-parecidos').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-}
-
-function mostrarErrorAlta(mensaje) {
-  $('#alta-error').textContent = mensaje;
-  $('#alta-error').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-}
-
-function abrirAlta() {
-  if (!cliente) return abrirAjustes();
-  const f = formAlta();
-  f.reset();
-  f.tipo.value = pestana === 'todo' ? 'libros' : pestana;
-  limpiarMensajesAlta();
-  ajustarFormularioAlta();
-  $('#dlg-alta').showModal();
-  f.titulo.focus();
-}
-
-async function guardarAlta(forzar) {
-  const f = formAlta();
-  const tipo = f.tipo.value;
-  const campos = Object.fromEntries(new FormData(f));
-  limpiarMensajesAlta();
-
-  let item;
-  try {
-    item = construirItem(tipo, campos, { nombre: config.nombre, fecha: hoy() });
-    // Comprobación rápida con la copia local, antes de ir a GitHub.
-    comprobarDuplicados(almacen.items(tipo), item, { forzar });
-  } catch (e) {
-    if (e instanceof ParecidoError) mostrarParecidos(e.parecidos);
-    else mostrarErrorAlta(e.message);
-    return;
-  }
-
-  if (!navigator.onLine) {
-    mostrarErrorAlta('Sin conexión: no se puede guardar ahora. Lo escrito se mantiene.');
-    return;
-  }
-
-  const boton = $('#alta-guardar');
-  boton.disabled = true;
-  boton.textContent = 'Guardando…';
-  try {
-    // Segunda comprobación contra la versión más reciente del fichero, dentro del ciclo de reintento.
-    const resultado = await cliente.actualizar(
-      `${tipo}.json`,
-      (datos) => {
-        comprobarDuplicados(datos.items, item, { forzar });
-        return { ...datos, items: [...datos.items, item] };
-      },
-      `Alta: ${item.titulo} (por ${config.nombre})`,
-    );
-    almacen.fijar(tipo, resultado.datos);
-    $('#dlg-alta').close();
-    render();
-    aviso(`«${item.titulo}» añadido.`);
-  } catch (e) {
-    if (e instanceof ParecidoError) mostrarParecidos(e.parecidos);
-    else mostrarErrorAlta(e.message);
-    // Otra persona pudo añadir algo: refrescamos la copia local sin molestar.
-    if (e instanceof DuplicadoError || e instanceof ParecidoError) recargar();
-  } finally {
-    boton.disabled = false;
-    boton.textContent = 'Guardar';
-  }
-}
-
 // ---------- Arranque
 
 function iniciar() {
   pintarPestanas();
-  $('#alta-tipo').replaceChildren(...TIPOS.map((t) => el('option', { value: t.clave }, t.singular)));
+  iniciarFormulario({ despuesDeGuardar: render });
 
   $('#buscar').addEventListener('input', (e) => {
     terminos = terminosDe(e.target.value);
     render();
   });
+  const casilla = $('#agrupar');
+  casilla.checked = agrupar;
+  casilla.addEventListener('change', () => {
+    agrupar = casilla.checked;
+    try {
+      localStorage.setItem(CLAVE_AGRUPAR, agrupar ? '1' : '0');
+    } catch {
+      // Preferencia solo para esta sesión.
+    }
+    render();
+  });
+
   $('#btn-recargar').addEventListener('click', recargar);
   $('#btn-ajustes').addEventListener('click', abrirAjustes);
-  $('#btn-alta').addEventListener('click', abrirAlta);
+  $('#btn-alta').addEventListener('click', () => {
+    if (!app.cliente) return abrirAjustes();
+    abrirAlta(pestana === 'todo' ? 'libros' : pestana);
+  });
 
   $('#form-ajustes').addEventListener('submit', guardarAjustes);
   $('#ajustes-cancelar').addEventListener('click', () => $('#dlg-ajustes').close());
   // Sin configuración no se puede cerrar el diálogo de ajustes.
   $('#dlg-ajustes').addEventListener('cancel', (e) => {
-    if (!cliente) e.preventDefault();
+    if (!app.cliente) e.preventDefault();
   });
 
-  const f = formAlta();
-  f.tipo.addEventListener('change', ajustarFormularioAlta);
-  f.subtipo.addEventListener('change', ajustarFormularioAlta);
-  f.addEventListener('input', (e) => {
-    if (e.target.name !== 'tipo') $('#alta-parecidos').hidden = true;
+  $('#detalle-cerrar').addEventListener('click', () => $('#dlg-detalle').close());
+  $('#detalle-editar').addEventListener('click', () => {
+    const { tipo, item } = fichaActual;
+    $('#dlg-detalle').close();
+    abrirEdicion(tipo, item);
   });
-  f.addEventListener('submit', (e) => {
-    e.preventDefault();
-    guardarAlta(false);
-  });
-  $('#alta-forzar').addEventListener('click', () => guardarAlta(true));
-  $('#alta-cancelar').addEventListener('click', () => $('#dlg-alta').close());
-
+  $('#detalle-borrar').addEventListener('click', borrar);
   // Cerrar la ficha pulsando fuera.
   $('#dlg-detalle').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) e.currentTarget.close();
   });
 
   window.addEventListener('online', recargar);
-  window.addEventListener('offline', () => mostrarEstado('Sin conexión. Puedes consultar, pero no añadir.'));
+  window.addEventListener('offline', () => mostrarEstado('Sin conexión. Puedes consultar, pero no guardar cambios.'));
 
   render();
-  if (cliente) recargar();
+  if (app.cliente) recargar();
   else abrirAjustes();
 }
 

@@ -15,8 +15,8 @@ export class DuplicadoError extends Error {
 }
 
 export class ParecidoError extends Error {
-  constructor(parecidos) {
-    super('Hay títulos parecidos en la colección.');
+  constructor(parecidos, mensaje = 'Se parece a lo que ya tenéis:') {
+    super(mensaje);
     this.name = 'ParecidoError';
     this.parecidos = parecidos;
   }
@@ -41,21 +41,48 @@ function autoresCompatibles(a, b) {
   return similitud(x, y) >= UMBRAL_AUTOR;
 }
 
-/** Compara un título candidato con los existentes del mismo tipo. */
-export function buscarDuplicados(items, candidato) {
-  const mismoId = items.find((it) => it.id === candidato.id) ?? null;
-  const parecidos = items.filter(
+function parecidosA(items, candidato) {
+  return items.filter(
     (it) =>
       it.id !== candidato.id &&
       titulosParecidos(it.titulo, candidato.titulo) &&
       autoresCompatibles(it.autor, candidato.autor),
   );
-  return { mismoId, parecidos };
 }
 
-/** Lanza DuplicadoError o, salvo que se fuerce, ParecidoError. */
+/** Otro título que ya ocupa el mismo número en la misma saga, o null. */
+export function mismoOrden(items, candidato) {
+  if (!candidato.saga) return null;
+  return items.find((it) => it.id !== candidato.id && it.saga?.id === candidato.saga.id && it.saga.orden === candidato.saga.orden) ?? null;
+}
+
+/** Compara un título candidato con los existentes del mismo tipo. */
+export function buscarDuplicados(items, candidato) {
+  const mismoId = items.find((it) => it.id === candidato.id) ?? null;
+  return { mismoId, parecidos: parecidosA(items, candidato) };
+}
+
+function avisoDeOrden(items, candidato) {
+  const otro = mismoOrden(items, candidato);
+  if (otro) throw new ParecidoError([otro], `Ya tenéis el número ${candidato.saga.orden} de esta saga:`);
+}
+
+/** Alta: lanza DuplicadoError o, salvo que se fuerce, ParecidoError (título parecido o número de saga ocupado). */
 export function comprobarDuplicados(items, candidato, { forzar = false } = {}) {
   const { mismoId, parecidos } = buscarDuplicados(items, candidato);
   if (mismoId) throw new DuplicadoError(mismoId);
-  if (parecidos.length && !forzar) throw new ParecidoError(parecidos);
+  if (forzar) return;
+  if (parecidos.length) throw new ParecidoError(parecidos);
+  avisoDeOrden(items, candidato);
+}
+
+/** Edición: solo avisa de lo que la edición cambia (título o autor, y saga). */
+export function comprobarEdicion(items, original, editado, { forzar = false } = {}) {
+  if (forzar) return;
+  const otros = items.filter((it) => it.id !== original.id);
+  if (original.titulo !== editado.titulo || original.autor !== editado.autor) {
+    const parecidos = parecidosA(otros, editado);
+    if (parecidos.length) throw new ParecidoError(parecidos);
+  }
+  if (JSON.stringify(original.saga) !== JSON.stringify(editado.saga)) avisoDeOrden(otros, editado);
 }

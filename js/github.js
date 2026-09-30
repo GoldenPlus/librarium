@@ -118,12 +118,14 @@ export function crearCliente({ token, repo, fetch: fetchImpl = (...a) => globalT
 
   /**
    * Lee la versión más reciente, aplica `mutar(datos)` (que puede lanzar, por ejemplo por duplicado)
-   * y guarda. Ante un conflicto de sha vuelve a empezar, hasta `intentos` veces.
+   * y guarda. Si `mutar` devuelve null no hay nada que guardar. Ante un conflicto de sha vuelve
+   * a empezar, hasta `intentos` veces.
    */
   async function actualizar(fichero, mutar, mensaje, intentos = 3) {
     for (let i = 0; i < intentos; i++) {
       const { datos, sha } = await leer(fichero);
       const nuevos = mutar(datos);
+      if (nuevos === null) return { datos, sha };
       try {
         return { datos: nuevos, sha: await escribir(fichero, nuevos, sha, mensaje) };
       } catch (e) {

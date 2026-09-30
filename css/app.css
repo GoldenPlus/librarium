@@ -49,6 +49,7 @@ button {
 }
 button:disabled { opacity: 0.55; cursor: default; }
 button.secundario { background: transparent; color: var(--texto); border: 1px solid var(--borde); }
+button.peligro { background: transparent; color: var(--error); border: 1px solid currentColor; }
 button.icono { background: transparent; color: var(--texto); font-size: 1.3rem; padding: 0.2em 0.5em; }
 
 input, select, textarea {
@@ -86,7 +87,10 @@ main { padding: 0.5rem 1rem 6rem; max-width: 50rem; margin: 0 auto; }
 .estado:empty, .contador:empty { display: none; }
 .estado { margin: 0.5rem 0; color: var(--suave); }
 .estado.error { color: var(--error); }
+.barra-lista { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 2.25rem; }
 .contador { color: var(--suave); font-size: 0.85rem; margin: 0.5rem 0; }
+.agrupar { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--suave); margin-left: auto; }
+.agrupar input { width: auto; margin: 0; }
 .vacio { color: var(--suave); text-align: center; margin-top: 3rem; }
 
 /* Listado */
@@ -153,7 +157,18 @@ dialog h2 { margin: 0 0 0.25rem; font-size: 1.2rem; }
 .ayuda { margin: 0; font-size: 0.9rem; }
 .error { color: var(--error); margin: 0; }
 .error:empty { display: none; }
-.botones { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
+.botones { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+.hueco { flex: 1; }
+
+.saga { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 0.75rem; border: 1px solid var(--borde); border-radius: 8px; padding: 0.5rem 0.75rem 0.75rem; margin: 0; }
+.saga legend { font-size: 0.9rem; font-weight: 500; padding: 0 0.25rem; }
+.saga .ancho { grid-column: 1 / -1; }
+
+.temporadas-edicion { display: grid; gap: 0.4rem; }
+.temporadas-edicion .etiqueta { font-size: 0.9rem; font-weight: 500; }
+.temporadas-edicion > button { justify-self: start; }
+#filas-temporadas { display: grid; gap: 0.4rem; }
+.fila-temporada { display: grid; grid-template-columns: 3.5rem 1fr 1.4fr auto; gap: 0.35rem; align-items: center; }
 
 .parecidos { background: var(--aviso-fondo); border-radius: 8px; padding: 0.75rem; }
 .parecidos p { margin: 0 0 0.25rem; font-weight: 500; }
@@ -166,7 +181,11 @@ dialog h2 { margin: 0 0 0.25rem; font-size: 1.2rem; }
 .detalle dl { display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1rem; margin: 0; }
 .detalle dt { color: var(--suave); }
 .detalle dd { margin: 0; overflow-wrap: anywhere; }
-.detalle ul { margin: 0; padding-left: 1.1rem; }
+.detalle ul, .detalle ol { margin: 0; padding-left: 1.1rem; }
+.detalle .subtitulo { margin: 0.25rem 0 0; color: var(--suave); }
+.enlace { background: none; border: 0; padding: 0; color: var(--acento); text-decoration: underline; text-align: left; border-radius: 0; }
+.detalle ol li { margin: 0.2rem 0; }
+.detalle .falta { color: var(--suave); }
 
 .aviso {
   position: fixed;

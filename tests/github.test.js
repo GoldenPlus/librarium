@@ -81,3 +81,11 @@ test('fichero inexistente se lee vacío; token erróneo da mensaje claro', async
   const f401 = async () => ({ ok: false, status: 401 });
   await assert.rejects(crearCliente({ token: 'malo', repo: 'a/b', fetch: f401 }).comprobarRepo(), (e) => e instanceof GitHubError && /token/.test(e.message));
 });
+
+test('si mutar devuelve null no se escribe nada', async () => {
+  const gh = githubFalso({ items: [{ id: 'manual:1', titulo: 'A' }] });
+  const cliente = crearCliente({ token: 't', repo: 'a/b', fetch: gh.fetch });
+  const res = await cliente.actualizar('libros.json', () => null, 'Nada');
+  assert.equal(res.datos.items.length, 1);
+  assert.deepEqual(gh.escrituras, []);
+});
