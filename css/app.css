@@ -184,6 +184,24 @@ dialog h2 { margin: 0 0 0.25rem; font-size: 1.2rem; }
 .campo-isbn .ayuda.error { color: var(--error); }
 .portada-previa { width: 5rem; height: 7.3rem; object-fit: cover; border-radius: 6px; background: var(--borde); }
 
+.resultados { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+.resultados:empty { display: none; }
+.resultado {
+  width: 100%;
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  text-align: left;
+  background: var(--fondo);
+  color: var(--texto);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  padding: 0.35rem;
+}
+.resultado img, .resultado .sin-imagen { width: 2.5rem; height: 3.7rem; object-fit: cover; border-radius: 4px; flex: none; background: var(--borde); display: grid; place-items: center; }
+.resultado > span { display: grid; min-width: 0; }
+.resultado small { color: var(--suave); }
+
 .escaner video { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #000; border-radius: 8px; display: block; }
 .escaner p { margin: 0.75rem 0 0; }
 

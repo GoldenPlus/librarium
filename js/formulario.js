@@ -1,11 +1,12 @@
 // Formulario de alta y edición: validación, duplicados, saga y guardado con reintento.
 
-import { TIPOS, TIPO, construirItem, editarItem, sinCambios, aplicarCambios, dondeEsta, formatosDe, hoy, llevaTemporadas, ubicacionesDe } from './modelo.js';
-import { comprobarDuplicados, comprobarEdicion, DuplicadoError, ParecidoError } from './duplicados.js';
+import { TIPOS, TIPO, construirItem, editarItem, sinCambios, aplicarCambios, anadirTemporadas, dondeEsta, formatosDe, hoy, llevaTemporadas, textoTemporadas, ubicacionesDe } from './modelo.js';
+import { comprobarEdicion, prepararAlta, DuplicadoError, ParecidoError, SerieExistenteError } from './duplicados.js';
 import { leerCamposSaga, asegurarSaga, idSaga } from './sagas.js';
 import { normalizarIsbn } from './isbn.js';
 import { buscarLibro } from './catalogo.js';
 import { escanearIsbn } from './escaner.js';
+import { crearTmdb } from './tmdb.js';
 import { app, sagaDe } from './estado.js';
 import { $, el, aviso } from './dom.js';
 
@@ -35,6 +36,8 @@ function ajustar() {
   f.tipo.disabled = modo.edicion;
   f.subtipo.disabled = modo.edicion;
   $('#campo-isbn').hidden = !TIPO[tipo].isbn || modo.edicion;
+  $('#campo-tmdb').hidden = TIPO[tipo].isbn || modo.edicion;
+  $('#btn-todas').hidden = !(Number(f.temporadas_total.value) > 0);
   $('#campo-subtipo').hidden = tipo !== 'documentales';
   $('#campo-temporadas').hidden = !conTemporadas || modo.edicion;
   $('#campo-temporadas-edicion').hidden = !filasDeTemporadas;
@@ -66,15 +69,46 @@ function mostrarError(mensaje) {
   $('#alta-error').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-function mostrarParecidos(error) {
-  $('#alta-parecidos p').textContent = error.message;
-  $('#alta-parecidos ul').replaceChildren(
-    ...error.parecidos.slice(0, 5).map((it) =>
-      el('li', {}, `«${it.titulo}»`, it.autor && ` — ${it.autor}`, dondeEsta(it) && ` (${dondeEsta(it)})`),
-    ),
-  );
+/** Lo que hace el botón del aviso: «Añadir igualmente» o «Añadir a esa ficha». */
+let accionAviso = () => {};
+
+function mostrarAviso(mensaje, elementos, textoBoton, accion) {
+  $('#alta-parecidos p').textContent = mensaje;
+  $('#alta-parecidos ul').replaceChildren(...elementos.map((texto) => el('li', {}, texto)));
+  $('#alta-forzar').textContent = textoBoton;
+  accionAviso = accion;
   $('#alta-parecidos').hidden = false;
   $('#alta-parecidos').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function mostrarParecidos(error) {
+  const elementos = error.parecidos
+    .slice(0, 5)
+    .map((it) => [`«${it.titulo}»`, it.autor && ` — ${it.autor}`, dondeEsta(it) && ` (${dondeEsta(it)})`].filter(Boolean).join(''));
+  mostrarAviso(error.message, elementos, 'Añadir igualmente', () => guardar(true));
+}
+
+/** La serie ya existe: se ofrece añadir las temporadas nuevas a su ficha. */
+function ofrecerTemporadas(tipo, existente, item) {
+  const ya = new Set((existente.temporadas ?? []).map((t) => t.num));
+  const nuevas = item.temporadas.map((t) => t.num).filter((n) => !ya.has(n));
+  const repetidas = item.temporadas.map((t) => t.num).filter((n) => ya.has(n));
+  const tiene = textoTemporadas(existente);
+  const mensaje = `Ya tenéis «${existente.titulo}»${tiene ? `: temporadas ${tiene}` : ''}.`;
+  if (!nuevas.length) {
+    mostrarError(`${mensaje} ${repetidas.length === 1 ? `La temporada ${repetidas[0]} ya está.` : `Las temporadas ${repetidas.join(', ')} ya están.`}`);
+    return;
+  }
+  const plural = (nums, uno, varios) => (nums.length === 1 ? `${uno} ${nums[0]}` : `${varios} ${nums.join(', ')}`);
+  mostrarAviso(
+    mensaje,
+    [
+      `¿Añadir ${plural(nuevas, 'la temporada', 'las temporadas')} a esa ficha?`,
+      repetidas.length ? `${plural(repetidas, 'La', 'Las')} ya ${repetidas.length === 1 ? 'está' : 'están'} y no se toca${repetidas.length === 1 ? '' : 'n'}.` : '',
+    ].filter(Boolean),
+    'Añadir a esa ficha',
+    () => guardarTemporadas(tipo, existente, item),
+  );
 }
 
 function filaTemporada({ num, formato = '', ubicacion = '' }) {
@@ -112,6 +146,7 @@ function ponerPortada(url) {
   const img = $('#alta-portada');
   f.portada.value = url || '';
   img.hidden = !url;
+  img.onerror = () => (img.hidden = true);
   if (url) img.src = url;
   else img.removeAttribute('src');
 }
@@ -195,6 +230,104 @@ export async function abrirEscaner() {
   }
 }
 
+// ---------- TMDB: búsqueda de películas, series y documentales
+
+function estadoTmdb(texto, esError = false) {
+  const nodo = $('#tmdb-estado');
+  nodo.textContent = texto;
+  nodo.classList.toggle('error', esError);
+}
+
+function limpiarTmdb() {
+  const f = form();
+  f.tmdb.value = '';
+  f.temporadas_total.value = '';
+  $('#tmdb-buscar').value = '';
+  $('#tmdb-resultados').replaceChildren();
+  estadoTmdb('');
+}
+
+function clienteTmdb() {
+  if (!app.config.tmdb) throw new Error('Para buscar en TMDB, pon su clave en Ajustes (⚙). Mientras, rellena los datos a mano.');
+  return crearTmdb(app.config.tmdb);
+}
+
+const NOMBRE_MEDIA = { movie: 'Película', tv: 'Serie' };
+
+async function buscarTmdb() {
+  const texto = $('#tmdb-buscar').value.trim();
+  if (!texto) return;
+  $('#tmdb-resultados').replaceChildren();
+  const boton = $('#btn-tmdb');
+  boton.disabled = true;
+  estadoTmdb('Buscando…');
+  try {
+    const resultados = await clienteTmdb().buscar(texto);
+    estadoTmdb(resultados.length ? 'Elige el correcto:' : 'TMDB no encuentra nada con ese título.');
+    $('#tmdb-resultados').replaceChildren(
+      ...resultados.slice(0, 8).map((r) =>
+        el('li', {},
+          el('button', { type: 'button', class: 'resultado', onclick: () => elegirTmdb(r) },
+            r.miniatura
+              ? el('img', { src: r.miniatura, alt: '', loading: 'lazy', onerror: (e) => (e.currentTarget.style.visibility = 'hidden') })
+              : el('span', { class: 'sin-imagen', 'aria-hidden': 'true' }, '🎬'),
+            el('span', {}, el('strong', {}, r.titulo), el('small', {}, [r.documental ? 'Documental' : NOMBRE_MEDIA[r.media], r.anio].filter(Boolean).join(' · '))),
+          ),
+        ),
+      ),
+    );
+  } catch (e) {
+    estadoTmdb(e.message, true);
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+async function elegirTmdb(resultado) {
+  const f = form();
+  $('#tmdb-resultados').replaceChildren();
+  estadoTmdb('Cargando datos…');
+  try {
+    const tmdb = clienteTmdb();
+    const d = await tmdb.detalles(resultado.media, resultado.id);
+    const tipo = d.documental ? 'documentales' : d.media === 'movie' ? 'peliculas' : 'series';
+    f.tipo.value = tipo;
+    f.subtipo.value = d.media === 'tv' ? 'serie' : 'pelicula';
+    f.titulo.value = d.titulo;
+    f.autor.value = d.autor;
+    f.anio.value = d.anio ?? '';
+    f.tmdb.value = `${d.media}:${d.id}`;
+    f.temporadas_total.value = d.temporadas_total ?? '';
+    if (d.temporadas_total) f.temporadas.placeholder = `por ejemplo 1-${d.temporadas_total}`;
+    ponerPortada(d.portada);
+    ajustar();
+
+    const notas = [];
+    if (d.documental) notas.push('TMDB lo clasifica como documental: se guardará en Documentales (puedes cambiar el tipo).');
+    if (d.temporadas_total) notas.push(`Tiene ${d.temporadas_total} ${d.temporadas_total === 1 ? 'temporada' : 'temporadas'}; indica cuáles tenéis o pulsa «Todas».`);
+    const existente = app.almacen.items(tipo).find((it) => it.id === `tmdb:${d.media}:${d.id}` || it.id.startsWith(`tmdb:${d.media}:${d.id}:`));
+    if (existente) {
+      notas.push(d.media === 'tv'
+        ? `Ya tenéis esta serie, temporadas ${textoTemporadas(existente)}: las nuevas se añadirán a su ficha.`
+        : `Ya tenéis esta película${existente.formato ? ` en ${existente.formato}` : ''}. Solo se puede añadir otra edición con un formato distinto.`);
+    }
+    if (d.coleccion && !f.saga.value.trim()) {
+      const saga = await tmdb.saga(d.coleccion, d.id).catch(() => null);
+      if (saga?.nombre) {
+        f.saga.value = saga.nombre;
+        f.saga_orden.value = saga.orden ?? '';
+        f.saga_total.value = saga.total ?? '';
+        sugerirTotal();
+        notas.push(`Saga propuesta: ${saga.nombre}${saga.orden ? `, nº ${saga.orden}` : ''}${saga.total ? ` de ${saga.total}` : ''}.`);
+      }
+    }
+    estadoTmdb(['Datos de TMDB.', ...notas].join(' '));
+    (llevaTemporadas(tipo, f.subtipo.value) ? f.temporadas : f.formato).focus();
+  } catch (e) {
+    estadoTmdb(e.message, true);
+  }
+}
+
 // ---------- Abrir
 
 export function abrirAlta(tipoPorDefecto) {
@@ -203,7 +336,9 @@ export function abrirAlta(tipoPorDefecto) {
   modo = { edicion: false };
   $('#form-titulo').textContent = 'Añadir';
   f.tipo.value = tipoPorDefecto;
+  f.temporadas.placeholder = 'por ejemplo 1-3, 5';
   $('#filas-temporadas').replaceChildren();
+  limpiarTmdb();
   ponerPortada('');
   estadoIsbn('');
   limpiarMensajes();
@@ -224,6 +359,7 @@ export function abrirEdicion(tipo, item) {
   f.saga.value = sagaDe(item.saga)?.nombre ?? '';
   f.saga_orden.value = item.saga?.orden ?? '';
   $('#filas-temporadas').replaceChildren(...(item.temporadas ?? []).map(filaTemporada));
+  limpiarTmdb();
   ponerPortada('');
   estadoIsbn('');
   limpiarMensajes();
@@ -271,9 +407,10 @@ async function guardar(forzar) {
     }
     // Comprobación rápida con la copia local, antes de ir a GitHub.
     if (m.edicion) comprobarEdicion(app.almacen.items(tipo), m.original, item, { forzar });
-    else comprobarDuplicados(app.almacen.items(tipo), item, { forzar });
+    else item = prepararAlta(app.almacen.items(tipo), item, { forzar });
   } catch (e) {
-    if (e instanceof ParecidoError) mostrarParecidos(e);
+    if (e instanceof SerieExistenteError) ofrecerTemporadas(tipo, e.existente, item);
+    else if (e instanceof ParecidoError) mostrarParecidos(e);
     else mostrarError(e.message);
     return;
   }
@@ -297,10 +434,7 @@ async function guardar(forzar) {
           comprobarEdicion(datos.items, m.original, resultado, { forzar });
           return { ...datos, items: datos.items.map((it) => (it.id === m.original.id ? resultado : it)) };
         }
-      : (datos) => {
-          comprobarDuplicados(datos.items, item, { forzar });
-          return { ...datos, items: [...datos.items, item] };
-        };
+      : (datos) => ({ ...datos, items: [...datos.items, prepararAlta(datos.items, item, { forzar })] });
     const accion = m.edicion ? 'Edición' : 'Alta';
     const resultado = await app.cliente.actualizar(`${tipo}.json`, mutar, `${accion}: ${item.titulo} (por ${app.config.nombre})`);
     app.almacen.fijar(tipo, resultado.datos);
@@ -308,13 +442,47 @@ async function guardar(forzar) {
     alGuardar();
     aviso(m.edicion ? `«${item.titulo}» guardado.` : `«${item.titulo}» añadido.`);
   } catch (e) {
-    if (e instanceof ParecidoError) mostrarParecidos(e);
+    if (e instanceof SerieExistenteError) ofrecerTemporadas(tipo, e.existente, item);
+    else if (e instanceof ParecidoError) mostrarParecidos(e);
     else mostrarError(e.message);
     // Otra persona pudo cambiar algo: refrescamos la copia local sin molestar.
-    if (e instanceof DuplicadoError || e instanceof ParecidoError) app.almacen.recargar(app.cliente).then(alGuardar, () => {});
+    if (e instanceof DuplicadoError || e instanceof ParecidoError || e instanceof SerieExistenteError) {
+      app.almacen.recargar(app.cliente).then(alGuardar, () => {});
+    }
   } finally {
     boton.disabled = false;
     boton.textContent = 'Guardar';
+  }
+}
+
+/** Añade las temporadas del formulario a la ficha de una serie que ya existe. */
+async function guardarTemporadas(tipo, existente, item) {
+  limpiarMensajes();
+  if (!navigator.onLine) return mostrarError('Sin conexión: no se puede guardar ahora. Lo escrito se mantiene.');
+  const boton = $('#alta-forzar');
+  boton.disabled = true;
+  let resumen;
+  try {
+    const opciones = { nombre: app.config.nombre, fecha: hoy(), total: item.temporadas_total };
+    const resultado = await app.cliente.actualizar(
+      `${tipo}.json`,
+      (datos) => {
+        const actual = datos.items.find((it) => it.id === existente.id);
+        if (!actual) throw new Error('Otra persona ha eliminado esa serie mientras tanto. Pulsa Guardar para darla de alta.');
+        resumen = anadirTemporadas(actual, item.temporadas, opciones);
+        return { ...datos, items: datos.items.map((it) => (it.id === actual.id ? resumen.item : it)) };
+      },
+      `Temporadas: ${existente.titulo} (por ${app.config.nombre})`,
+    );
+    app.almacen.fijar(tipo, resultado.datos);
+    $('#dlg-alta').close();
+    alGuardar();
+    const ya = resumen.repetidas.length ? `; ${resumen.repetidas.join(', ')} ya estaba${resumen.repetidas.length > 1 ? 'n' : ''}` : '';
+    aviso(`Añadida${resumen.anadidas.length > 1 ? 's las temporadas' : ' la temporada'} ${resumen.anadidas.join(', ')} a «${existente.titulo}»${ya}.`);
+  } catch (e) {
+    mostrarError(e.message);
+  } finally {
+    boton.disabled = false;
   }
 }
 
@@ -334,10 +502,21 @@ export function iniciarFormulario({ despuesDeGuardar }) {
     e.preventDefault();
     guardar(false);
   });
-  $('#alta-forzar').addEventListener('click', () => guardar(true));
+  $('#alta-forzar').addEventListener('click', () => accionAviso());
   $('#alta-cancelar').addEventListener('click', () => $('#dlg-alta').close());
   $('#btn-temporada').addEventListener('click', anadirFilaTemporada);
 
+  $('#btn-tmdb').addEventListener('click', buscarTmdb);
+  $('#tmdb-buscar').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    buscarTmdb();
+  });
+  // «Añadir todas»: toda la serie con el mismo formato y ubicación.
+  $('#btn-todas').addEventListener('click', () => {
+    const total = Number(f.temporadas_total.value);
+    if (total > 0) f.temporadas.value = total === 1 ? '1' : `1-${total}`;
+  });
   $('#btn-buscar-isbn').addEventListener('click', () => procesarIsbn(f.isbn.value));
   $('#btn-escanear').addEventListener('click', abrirEscaner);
   f.isbn.addEventListener('keydown', (e) => {

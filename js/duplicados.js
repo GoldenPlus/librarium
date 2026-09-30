@@ -7,8 +7,9 @@ const UMBRAL_TITULO = 0.85;
 const UMBRAL_AUTOR = 0.8;
 
 export class DuplicadoError extends Error {
-  constructor(existente) {
-    super(`Ya lo tenéis: «${existente.titulo}»${dondeEsta(existente) ? ` en ${dondeEsta(existente)}` : ''}.`);
+  constructor(existente, extra = '') {
+    const formato = existente.formato ? ` (${existente.formato})` : '';
+    super(`Ya lo tenéis: «${existente.titulo}»${formato}${dondeEsta(existente) ? ` en ${dondeEsta(existente)}` : ''}.${extra}`);
     this.name = 'DuplicadoError';
     this.existente = existente;
   }
@@ -19,6 +20,15 @@ export class ParecidoError extends Error {
     super(mensaje);
     this.name = 'ParecidoError';
     this.parecidos = parecidos;
+  }
+}
+
+/** La serie ya existe: se ofrece añadir las temporadas a su ficha. */
+export class SerieExistenteError extends Error {
+  constructor(existente) {
+    super(`Ya tenéis «${existente.titulo}».`);
+    this.name = 'SerieExistenteError';
+    this.existente = existente;
   }
 }
 
@@ -41,10 +51,13 @@ function autoresCompatibles(a, b) {
   return similitud(x, y) >= UMBRAL_AUTOR;
 }
 
+/** tmdb:movie:603:blu-ray → tmdb:movie:603: los formatos de una misma película comparten base. */
+const idBase = (id) => (id.startsWith('tmdb:movie:') ? id.split(':').slice(0, 3).join(':') : id);
+
 function parecidosA(items, candidato) {
   return items.filter(
     (it) =>
-      it.id !== candidato.id &&
+      idBase(it.id) !== idBase(candidato.id) &&
       titulosParecidos(it.titulo, candidato.titulo) &&
       autoresCompatibles(it.autor, candidato.autor),
   );
@@ -53,7 +66,14 @@ function parecidosA(items, candidato) {
 /** Otro título que ya ocupa el mismo número en la misma saga, o null. */
 export function mismoOrden(items, candidato) {
   if (!candidato.saga) return null;
-  return items.find((it) => it.id !== candidato.id && it.saga?.id === candidato.saga.id && it.saga.orden === candidato.saga.orden) ?? null;
+  return (
+    items.find(
+      (it) =>
+        idBase(it.id) !== idBase(candidato.id) &&
+        it.saga?.id === candidato.saga.id &&
+        it.saga.orden === candidato.saga.orden,
+    ) ?? null
+  );
 }
 
 /** Compara un título candidato con los existentes del mismo tipo. */
@@ -85,4 +105,31 @@ export function comprobarEdicion(items, original, editado, { forzar = false } = 
     if (parecidos.length) throw new ParecidoError(parecidos);
   }
   if (JSON.stringify(original.saga) !== JSON.stringify(editado.saga)) avisoDeOrden(otros, editado);
+}
+
+/**
+ * Películas y documentales de TMDB: el mismo título en otro formato (DVD y Blu-ray) se admite
+ * añadiendo el formato al id, p. ej. tmdb:movie:603:blu-ray. Mismo formato, o sin formato: duplicado.
+ */
+export function idSegunFormato(items, candidato) {
+  if (!candidato.id.startsWith('tmdb:movie:')) return candidato;
+  const base = candidato.id.split(':').slice(0, 3).join(':');
+  const variantes = items.filter((it) => it.id === base || it.id.startsWith(`${base}:`));
+  if (!variantes.length) return { ...candidato, id: base };
+  const formato = normalizar(candidato.formato);
+  if (!formato) throw new DuplicadoError(variantes[0], ' Si es otra edición, indica su formato.');
+  const igual = variantes.find((v) => normalizar(v.formato) === formato);
+  if (igual) throw new DuplicadoError(igual);
+  return { ...candidato, id: `${base}:${formato.replace(/ /g, '-')}` };
+}
+
+/** Alta completa: id según formato, serie existente y duplicados. Devuelve el título con su id definitivo. */
+export function prepararAlta(items, candidato, opciones = {}) {
+  if (candidato.temporadas) {
+    const existente = items.find((it) => it.id === candidato.id);
+    if (existente) throw new SerieExistenteError(existente);
+  }
+  const item = idSegunFormato(items, candidato);
+  comprobarDuplicados(items, item, opciones);
+  return item;
 }

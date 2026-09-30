@@ -69,6 +69,34 @@ export function resumirTemporadas(temporadas = []) {
   return tramos.map(([a, b]) => (a === b ? `${a}` : `${a}–${b}`)).join(', ');
 }
 
+/** «1–2 de 5» con el total de TMDB, o solo «1–2». */
+export function textoTemporadas(item) {
+  if (!item.temporadas?.length) return '';
+  const resumen = resumirTemporadas(item.temporadas);
+  return item.temporadas_total ? `${resumen} (${item.temporadas.length} de ${item.temporadas_total})` : resumen;
+}
+
+/**
+ * Añade temporadas a una serie existente. Las que ya estaban se ignoran y se devuelven en `repetidas`;
+ * si todas estaban, lanza ValidacionError.
+ */
+export function anadirTemporadas(existente, nuevas, { nombre, fecha = hoy(), total = null }) {
+  const ya = new Set((existente.temporadas ?? []).map((t) => t.num));
+  const repetidas = nuevas.filter((t) => ya.has(t.num)).map((t) => t.num);
+  const anadidas = nuevas.filter((t) => !ya.has(t.num));
+  if (!anadidas.length) {
+    throw new ValidacionError(repetidas.length === 1 ? `Ya tenéis la temporada ${repetidas[0]}.` : `Ya tenéis las temporadas ${repetidas.join(', ')}.`);
+  }
+  const item = {
+    ...existente,
+    temporadas: [...(existente.temporadas ?? []), ...anadidas].sort((a, b) => a.num - b.num),
+    temporadas_total: existente.temporadas_total ?? total,
+    mod_por: nombre,
+    mod_fecha: fecha,
+  };
+  return { item, anadidas: anadidas.map((t) => t.num), repetidas };
+}
+
 /** Dónde está un título: su ubicación o, en series, las de sus temporadas. */
 export function dondeEsta(item) {
   if (item.temporadas?.length) return [...new Set(item.temporadas.map((t) => t.ubicacion).filter(Boolean))].join(', ');
@@ -114,7 +142,9 @@ export function construirItem(tipo, campos, { nombre, fecha = hoy(), generarId =
   if (!ubicacion) throw new ValidacionError('La ubicación es obligatoria.');
 
   let id;
-  if (TIPO[tipo].isbn && limpiar(campos.isbn)) {
+  if (!TIPO[tipo].isbn && /^(movie|tv):\d+$/.test(campos.tmdb ?? '')) {
+    id = `tmdb:${campos.tmdb}`;
+  } else if (TIPO[tipo].isbn && limpiar(campos.isbn)) {
     const isbn = normalizarIsbn(campos.isbn);
     if (!isbn) throw new ValidacionError('El ISBN no es válido. Revisa los dígitos o déjalo vacío.');
     id = `isbn:${isbn}`;
@@ -142,7 +172,7 @@ export function construirItem(tipo, campos, { nombre, fecha = hoy(), generarId =
   if (llevaTemporadas(tipo, item.subtipo)) {
     const nums = parsearTemporadas(campos.temporadas);
     if (!nums.length) throw new ValidacionError('Indica qué temporadas tenéis, por ejemplo «1-3».');
-    item.temporadas_total = null;
+    item.temporadas_total = Number(campos.temporadas_total) || null;
     item.temporadas = nums.map((num) => ({ num, formato, ubicacion }));
     item.formato = '';
     item.ubicacion = '';

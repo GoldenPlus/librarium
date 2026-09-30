@@ -1,6 +1,6 @@
 // Interfaz: pestañas, listado, búsqueda, ficha, sagas, ajustes y arranque.
 
-import { TIPOS, TIPO, dondeEsta, resumirTemporadas } from './modelo.js';
+import { TIPOS, TIPO, dondeEsta, textoTemporadas } from './modelo.js';
 import { guardarConfig, normalizarRepo } from './config.js';
 import { crearCliente } from './github.js';
 import { terminosDe, coincide } from './busqueda.js';
@@ -56,7 +56,7 @@ function portada(item, tipo) {
 
 function lineaSecundaria(item) {
   const partes = [item.autor, item.anio];
-  if (item.temporadas?.length) partes.push(`T. ${resumirTemporadas(item.temporadas)}`);
+  if (item.temporadas?.length) partes.push(`T. ${textoTemporadas(item)}`);
   if (item.saga) partes.push(`${sagaDe(item.saga).nombre} #${item.saga.orden}`);
   return partes.filter(Boolean).join(' · ');
 }
@@ -172,8 +172,10 @@ function abrirDetalle(tipo, item) {
     ['Año', item.anio],
     ['Formato', item.formato],
     ['Ubicación', item.ubicacion],
-    ['Temporadas', item.temporadas?.length &&
-      el('ul', {}, item.temporadas.map((t) => el('li', {}, [`T${t.num}`, t.formato, t.ubicacion].filter(Boolean).join(' · '))))],
+    ['Temporadas', item.temporadas?.length && [
+      item.temporadas_total && `Tenéis ${item.temporadas.length} de ${item.temporadas_total}`,
+      el('ul', {}, item.temporadas.map((t) => el('li', {}, [`T${t.num}`, t.formato, t.ubicacion].filter(Boolean).join(' · ')))),
+    ]],
     ['Saga', saga &&
       el('button', { type: 'button', class: 'enlace', onclick: () => abrirSaga(saga) },
         `${saga.nombre} · nº ${item.saga.orden} (${estadoSaga(saga, miembrosDe(saga)).texto})`)],

@@ -106,9 +106,20 @@
           <button id="btn-escanear" type="button" class="secundario" aria-label="Escanear código de barras">📷</button>
         </div>
         <p id="isbn-estado" class="ayuda" role="status"></p>
-        <img id="alta-portada" class="portada-previa" alt="Portada" hidden>
-        <input type="hidden" name="portada">
       </div>
+      <div id="campo-tmdb" class="campo-isbn">
+        <label for="tmdb-buscar">Buscar en TMDB <span class="opcional">(rellena datos, portada y saga)</span></label>
+        <div class="fila-isbn">
+          <input id="tmdb-buscar" type="search" autocomplete="off" enterkeyhint="search" placeholder="Título de la película o serie">
+          <button id="btn-tmdb" type="button" class="secundario">Buscar</button>
+        </div>
+        <p id="tmdb-estado" class="ayuda" role="status"></p>
+        <ul id="tmdb-resultados" class="resultados"></ul>
+        <input type="hidden" name="tmdb">
+        <input type="hidden" name="temporadas_total">
+      </div>
+      <img id="alta-portada" class="portada-previa" alt="Portada" hidden>
+      <input type="hidden" name="portada">
       <label>Título
         <input name="titulo" required autocomplete="off">
       </label>
@@ -119,7 +130,10 @@
         <input name="anio" type="number" inputmode="numeric" min="0" max="3000">
       </label>
       <label id="campo-temporadas">Temporadas que tenéis
-        <input name="temporadas" placeholder="por ejemplo 1-3, 5" autocomplete="off">
+        <span class="fila-isbn">
+          <input name="temporadas" placeholder="por ejemplo 1-3, 5" autocomplete="off">
+          <button id="btn-todas" type="button" class="secundario" hidden>Todas</button>
+        </span>
       </label>
       <label id="campo-formato">Formato
         <input name="formato" list="dl-formatos" autocomplete="off">
