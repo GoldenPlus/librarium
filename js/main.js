@@ -8,7 +8,7 @@ import { estadoSaga } from './sagas.js';
 import { compararTitulos, limpiar } from './texto.js';
 import { app, sagaDe } from './estado.js';
 import { $, el, aviso, fechaLegible } from './dom.js';
-import { abrirAlta, abrirEdicion, iniciarFormulario } from './formulario.js';
+import { abrirAlta, abrirEdicion, abrirEscaner, iniciarFormulario } from './formulario.js';
 
 const CLAVE_AGRUPAR = 'librarium.agrupar';
 
@@ -241,7 +241,7 @@ async function borrar() {
 
 function abrirAjustes() {
   const f = $('#form-ajustes');
-  for (const campo of ['nombre', 'repo', 'token', 'tmdb']) f[campo].value = app.config[campo];
+  for (const campo of ['nombre', 'repo', 'token', 'google', 'tmdb']) f[campo].value = app.config[campo];
   $('#ajustes-error').textContent = '';
   $('#ajustes-cancelar').hidden = !app.cliente;
   $('#dlg-ajustes').showModal();
@@ -252,7 +252,7 @@ async function guardarAjustes(evento) {
   const f = evento.target;
   const error = $('#ajustes-error');
   const repo = normalizarRepo(f.repo.value);
-  const nueva = { nombre: limpiar(f.nombre.value), repo, token: f.token.value.trim(), tmdb: f.tmdb.value.trim() };
+  const nueva = { nombre: limpiar(f.nombre.value), repo, token: f.token.value.trim(), google: f.google.value.trim(), tmdb: f.tmdb.value.trim() };
   if (!nueva.nombre || !nueva.token) return void (error.textContent = 'Rellena tu nombre y el token.');
   if (!repo) return void (error.textContent = 'El repositorio debe tener la forma usuario/nombre.');
 
@@ -305,6 +305,12 @@ function iniciar() {
   $('#btn-alta').addEventListener('click', () => {
     if (!app.cliente) return abrirAjustes();
     abrirAlta(pestana === 'todo' ? 'libros' : pestana);
+  });
+  // Escanear directamente: abre el alta (libro, o cómic si se está en esa pestaña) con la cámara.
+  $('#btn-escanear-rapido').addEventListener('click', () => {
+    if (!app.cliente) return abrirAjustes();
+    abrirAlta(pestana === 'comics' ? 'comics' : 'libros');
+    abrirEscaner();
   });
 
   $('#form-ajustes').addEventListener('submit', guardarAjustes);

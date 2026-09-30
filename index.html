@@ -29,7 +29,10 @@
     <p id="vacio" class="vacio" hidden></p>
   </main>
 
-  <button id="btn-alta" class="flotante" type="button">＋ Añadir</button>
+  <div class="flotantes">
+    <button id="btn-escanear-rapido" class="secundario" type="button" aria-label="Escanear un libro">📷</button>
+    <button id="btn-alta" type="button">＋ Añadir</button>
+  </div>
 
   <div id="aviso" class="aviso" role="status" aria-live="polite"></div>
 
@@ -47,6 +50,9 @@
       <label>Token de GitHub
         <input name="token" type="password" required autocomplete="off" spellcheck="false">
       </label>
+      <label><span>Clave de Google Books <span class="opcional">(opcional, completa datos de libros)</span></span>
+        <input name="google" autocomplete="off" spellcheck="false">
+      </label>
       <label><span>Clave de TMDB <span class="opcional">(opcional, para películas y series)</span></span>
         <input name="tmdb" autocomplete="off" spellcheck="false">
       </label>
@@ -56,6 +62,15 @@
         <button id="ajustes-guardar" type="submit">Guardar y conectar</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Escáner -->
+  <dialog id="dlg-escaner" class="escaner">
+    <video id="video-escaner" playsinline muted></video>
+    <p id="escaner-estado" role="status">Apunta al código de barras del libro.</p>
+    <div class="botones">
+      <button id="escaner-cancelar" type="button" class="secundario">Cancelar</button>
+    </div>
   </dialog>
 
   <!-- Detalle -->
@@ -83,9 +98,17 @@
           <option value="serie">Docuserie</option>
         </select>
       </label>
-      <label id="campo-isbn"><span>ISBN <span class="opcional">(opcional)</span></span>
-        <input name="isbn" inputmode="numeric" autocomplete="off">
-      </label>
+      <div id="campo-isbn" class="campo-isbn">
+        <label for="alta-isbn">ISBN <span class="opcional">(opcional)</span></label>
+        <div class="fila-isbn">
+          <input id="alta-isbn" name="isbn" inputmode="numeric" autocomplete="off" enterkeyhint="search">
+          <button id="btn-buscar-isbn" type="button" class="secundario">Buscar</button>
+          <button id="btn-escanear" type="button" class="secundario" aria-label="Escanear código de barras">📷</button>
+        </div>
+        <p id="isbn-estado" class="ayuda" role="status"></p>
+        <img id="alta-portada" class="portada-previa" alt="Portada" hidden>
+        <input type="hidden" name="portada">
+      </div>
       <label>Título
         <input name="titulo" required autocomplete="off">
       </label>

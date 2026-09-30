@@ -131,7 +131,7 @@ export function construirItem(tipo, campos, { nombre, fecha = hoy(), generarId =
     anio,
     formato,
     ubicacion,
-    portada: '',
+    portada: /^https:\/\//.test(campos.portada ?? '') ? campos.portada : '',
     notas: String(campos.notas ?? '').trim(),
     alta_por: nombre,
     alta_fecha: fecha,

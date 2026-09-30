@@ -129,14 +129,19 @@ main { padding: 0.5rem 1rem 6rem; max-width: 50rem; margin: 0 auto; }
   padding: 0.1em 0.6em;
 }
 
-.flotante {
+.flotantes {
   position: fixed;
   right: 1rem;
   bottom: max(1rem, env(safe-area-inset-bottom));
+  display: flex;
+  gap: 0.5rem;
+}
+.flotantes button {
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
   padding: 0.85em 1.3em;
   font-weight: 600;
 }
+.flotantes button.secundario { background: var(--superficie); }
 
 /* Diálogos */
 dialog {
@@ -169,6 +174,18 @@ dialog h2 { margin: 0 0 0.25rem; font-size: 1.2rem; }
 .temporadas-edicion > button { justify-self: start; }
 #filas-temporadas { display: grid; gap: 0.4rem; }
 .fila-temporada { display: grid; grid-template-columns: 3.5rem 1fr 1.4fr auto; gap: 0.35rem; align-items: center; }
+
+.campo-isbn { display: grid; gap: 0.3rem; }
+.formulario .campo-isbn > label { display: block; font-size: 0.9rem; font-weight: 500; }
+.fila-isbn { display: flex; gap: 0.4rem; }
+.fila-isbn input { flex: 1; min-width: 0; }
+.fila-isbn button { flex: none; padding: 0.5em 0.8em; }
+.campo-isbn .ayuda:empty { display: none; }
+.campo-isbn .ayuda.error { color: var(--error); }
+.portada-previa { width: 5rem; height: 7.3rem; object-fit: cover; border-radius: 6px; background: var(--borde); }
+
+.escaner video { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #000; border-radius: 8px; display: block; }
+.escaner p { margin: 0.75rem 0 0; }
 
 .parecidos { background: var(--aviso-fondo); border-radius: 8px; padding: 0.75rem; }
 .parecidos p { margin: 0 0 0.25rem; font-weight: 500; }

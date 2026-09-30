@@ -33,3 +33,9 @@ export function normalizarIsbn(texto) {
   if (d.length === 10 && esIsbn10Valido(d)) return isbn10a13(d);
   return null;
 }
+
+/** Código leído por el escáner: solo EAN-13 de libro (978/979) válido; si no, null. */
+export function isbnDeCodigo(texto) {
+  const d = String(texto ?? '').trim();
+  return /^97[89]\d{10}$/.test(d) && esIsbn13Valido(d) ? d : null;
+}
