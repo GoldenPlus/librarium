@@ -202,7 +202,13 @@ dialog h2 { margin: 0 0 0.25rem; font-size: 1.2rem; }
 .resultado > span { display: grid; min-width: 0; }
 .resultado small { color: var(--suave); }
 
-.escaner video { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #000; border-radius: 8px; display: block; }
+.escaner .visor { position: relative; overflow: hidden; border-radius: 8px; background: #000; }
+.escaner video { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #000; display: block; }
+.escaner .zoom {
+  position: absolute; right: 0.75rem; bottom: 0.75rem; width: 3rem; height: 3rem; padding: 0;
+  border-radius: 50%; font-size: 1.6rem; line-height: 1; background: rgb(0 0 0 / 0.55); color: #fff; border: 2px solid #fff;
+}
+.escaner .zoom[hidden] { display: none; }
 .escaner p { margin: 0.75rem 0 0; }
 
 .parecidos { background: var(--aviso-fondo); border-radius: 8px; padding: 0.75rem; }

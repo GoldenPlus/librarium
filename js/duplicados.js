@@ -1,7 +1,7 @@
 // Detección de duplicados: bloqueo por id y aviso por título y autor parecidos.
 
 import { normalizar, sinArticulo, similitud } from './texto.js';
-import { dondeEsta } from './modelo.js';
+import { dondeEsta, normalizarFormato } from './modelo.js';
 
 const UMBRAL_TITULO = 0.85;
 const UMBRAL_AUTOR = 0.8;
@@ -51,7 +51,7 @@ function autoresCompatibles(a, b) {
   return similitud(x, y) >= UMBRAL_AUTOR;
 }
 
-/** tmdb:movie:603:blu-ray → tmdb:movie:603: los formatos de una misma película comparten base. */
+/** tmdb:movie:603:digital → tmdb:movie:603: los formatos de una misma película comparten base. */
 const idBase = (id) => (id.startsWith('tmdb:movie:') ? id.split(':').slice(0, 3).join(':') : id);
 
 function parecidosA(items, candidato) {
@@ -108,19 +108,20 @@ export function comprobarEdicion(items, original, editado, { forzar = false } = 
 }
 
 /**
- * Películas y documentales de TMDB: el mismo título en otro formato (DVD y Blu-ray) se admite
- * añadiendo el formato al id, p. ej. tmdb:movie:603:blu-ray. Mismo formato, o sin formato: duplicado.
+ * Películas y documentales de TMDB: el mismo título en otro formato (físico y digital) se admite
+ * añadiendo el formato al id, p. ej. tmdb:movie:603:digital. Mismo formato, o sin formato: duplicado.
+ * Los formatos antiguos (DVD, Blu-ray…) cuentan como físico.
  */
 export function idSegunFormato(items, candidato) {
   if (!candidato.id.startsWith('tmdb:movie:')) return candidato;
   const base = candidato.id.split(':').slice(0, 3).join(':');
   const variantes = items.filter((it) => it.id === base || it.id.startsWith(`${base}:`));
   if (!variantes.length) return { ...candidato, id: base };
-  const formato = normalizar(candidato.formato);
+  const formato = normalizarFormato(candidato.formato);
   if (!formato) throw new DuplicadoError(variantes[0], ' Si es otra edición, indica su formato.');
-  const igual = variantes.find((v) => normalizar(v.formato) === formato);
+  const igual = variantes.find((v) => normalizarFormato(v.formato) === formato);
   if (igual) throw new DuplicadoError(igual);
-  return { ...candidato, id: `${base}:${formato.replace(/ /g, '-')}` };
+  return { ...candidato, id: `${base}:${normalizar(formato)}` };
 }
 
 /** Alta completa: id según formato, serie existente y duplicados. Devuelve el título con su id definitivo. */

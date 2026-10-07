@@ -16,18 +16,18 @@ const coleccion = { id: 2344, name: 'Matrix - Colección', parts: [
 const breakingBad = { id: 1396, name: 'Breaking Bad', first_air_date: '2008-01-20', poster_path: '/bb.jpg', number_of_seasons: 5, created_by: [{ name: 'Vince Gilligan' }], genres: [{ id: 18 }] };
 const cosmos = { id: 1, name: 'Cosmos', first_air_date: '1980-09-28', number_of_seasons: 1, genres: [{ id: 99 }] };
 
-test('película: directores, año, portada y colección', () => {
+test('película: año, portada y colección, sin director', () => {
   const d = desdePelicula(matrix);
-  assert.equal(d.autor, 'Lana Wachowski, Lilly Wachowski');
+  assert.equal('autor' in d, false);
   assert.equal(d.anio, 1999);
   assert.equal(d.portada, 'https://image.tmdb.org/t/p/w185/m.jpg');
   assert.deepEqual(d.coleccion, { id: 2344, nombre: 'Matrix - Colección' });
   assert.equal(d.documental, false);
 });
 
-test('serie: creadores y número de temporadas; documental por género', () => {
+test('serie: número de temporadas, sin creador; documental por género', () => {
   const d = desdeSerie(breakingBad);
-  assert.equal(d.autor, 'Vince Gilligan');
+  assert.equal('autor' in d, false);
   assert.equal(d.temporadas_total, 5);
   assert.equal(desdeSerie(cosmos).documental, true);
   assert.equal(resultadoDeBusqueda({ media_type: 'movie', id: 1, title: 'X', genre_ids: [99] }).documental, true);
@@ -67,16 +67,18 @@ test('el id de TMDB solo se usa en audiovisual', () => {
 });
 
 test('misma película en otro formato: se admite con el formato en el id', () => {
-  const dvd = { id: 'tmdb:movie:603', titulo: 'Matrix', formato: 'DVD', ubicacion: 'A' };
-  const bluray = idSegunFormato([dvd], { ...dvd, formato: 'Blu-ray' });
-  assert.equal(bluray.id, 'tmdb:movie:603:blu-ray');
-  assert.throws(() => idSegunFormato([dvd, bluray], { ...dvd, formato: 'blu-ray' }), DuplicadoError);
-  assert.throws(() => idSegunFormato([dvd], { ...dvd, formato: '' }), /otra edición/);
+  const fisico = { id: 'tmdb:movie:603', titulo: 'Matrix', formato: 'Físico', ubicacion: 'A' };
+  const digital = idSegunFormato([fisico], { ...fisico, formato: 'Digital' });
+  assert.equal(digital.id, 'tmdb:movie:603:digital');
+  assert.throws(() => idSegunFormato([fisico, digital], { ...fisico, formato: 'digital' }), DuplicadoError);
+  assert.throws(() => idSegunFormato([fisico], { ...fisico, formato: '' }), /otra edición/);
+  // Un formato antiguo (DVD) cuenta como físico.
+  assert.throws(() => idSegunFormato([{ ...fisico, formato: 'DVD' }], fisico), DuplicadoError);
   // El aviso de título parecido no salta entre formatos de la misma película.
-  assert.equal(prepararAlta([dvd], { ...dvd, formato: 'Blu-ray' }).id, 'tmdb:movie:603:blu-ray');
+  assert.equal(prepararAlta([fisico], { ...fisico, formato: 'Digital' }).id, 'tmdb:movie:603:digital');
   // Ni el de número de saga repetido: es otra edición seguro.
   const saga = { id: 'saga:peliculas:matrix', orden: 1 };
-  assert.equal(prepararAlta([{ ...dvd, saga }], { ...dvd, formato: 'Blu-ray', saga }).id, 'tmdb:movie:603:blu-ray');
+  assert.equal(prepararAlta([{ ...fisico, saga }], { ...fisico, formato: 'Digital', saga }).id, 'tmdb:movie:603:digital');
 });
 
 test('serie existente: se ofrece añadir temporadas; las repetidas avisan', () => {

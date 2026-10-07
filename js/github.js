@@ -45,7 +45,8 @@ function mensajeDeEstado(estado, que) {
   }
 }
 
-function parsear(texto, fichero) {
+/** `lista: false` para ficheros sin "items", como claves.json. */
+function parsear(texto, fichero, { lista = true } = {}) {
   if (!texto.trim()) return vacio();
   let datos;
   try {
@@ -53,7 +54,7 @@ function parsear(texto, fichero) {
   } catch {
     throw new GitHubError(`${fichero} no es un JSON válido. Corrígelo en el repo de datos.`, 0);
   }
-  if (!Array.isArray(datos?.items)) throw new GitHubError(`${fichero} no tiene la lista "items".`, 0);
+  if (lista && !Array.isArray(datos?.items)) throw new GitHubError(`${fichero} no tiene la lista "items".`, 0);
   if (datos.version > VERSION_DATOS) throw new GitHubError('Los datos usan una versión más nueva de la app. Recarga la página.', 0);
   return datos;
 }
@@ -85,7 +86,7 @@ export function crearCliente({ token, repo, fetch: fetchImpl = (...a) => globalT
   }
 
   /** Devuelve { datos, sha }. Un fichero que aún no existe se trata como vacío (sha null). */
-  async function leer(fichero) {
+  async function leer(fichero, opciones = {}) {
     const res = await peticion(`/contents/${fichero}`);
     if (res.status === 404) return { datos: vacio(), sha: null };
     if (!res.ok) throw new GitHubError(mensajeDeEstado(res.status, fichero), res.status);
@@ -99,7 +100,7 @@ export function crearCliente({ token, repo, fetch: fetchImpl = (...a) => globalT
     } else {
       texto = decodificarBase64(meta.content ?? '');
     }
-    return { datos: parsear(texto, fichero), sha: meta.sha };
+    return { datos: parsear(texto, fichero, opciones), sha: meta.sha };
   }
 
   async function escribir(fichero, datos, sha, mensaje) {

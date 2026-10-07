@@ -6,21 +6,27 @@ import { normalizarIsbn } from './isbn.js';
 export const TIPOS = [
   { clave: 'libros', nombre: 'Libros', singular: 'Libro', icono: '📚', isbn: true, autor: 'Autor' },
   { clave: 'comics', nombre: 'Cómics', singular: 'Cómic', icono: '💥', isbn: true, autor: 'Autor' },
-  { clave: 'peliculas', nombre: 'Películas', singular: 'Película', icono: '🎬', autor: 'Director' },
-  { clave: 'series', nombre: 'Series', singular: 'Serie', icono: '📺', autor: 'Creador' },
-  { clave: 'documentales', nombre: 'Documentales', singular: 'Documental', icono: '🎥', autor: 'Director' },
+  { clave: 'peliculas', nombre: 'Películas', singular: 'Película', icono: '🎬' },
+  { clave: 'series', nombre: 'Series', singular: 'Serie', icono: '📺' },
+  { clave: 'documentales', nombre: 'Documentales', singular: 'Documental', icono: '🎥' },
 ];
 
 export const TIPO = Object.fromEntries(TIPOS.map((t) => [t.clave, t]));
 
-const FORMATOS_VIDEO = ['DVD', 'Blu-ray', '4K UHD', 'Digital', 'Disco duro'];
-export const FORMATOS_BASE = {
-  libros: ['Tapa dura', 'Tapa blanda', 'Bolsillo', 'Digital'],
-  comics: ['Grapa', 'Tomo', 'Integral', 'Digital'],
-  peliculas: FORMATOS_VIDEO,
-  series: FORMATOS_VIDEO,
-  documentales: FORMATOS_VIDEO,
-};
+/** Solo libros y cómics guardan autor; películas, series y documentales no guardan director. */
+export const conAutor = (tipo) => Boolean(TIPO[tipo]?.autor);
+
+export const FORMATOS = ['Físico', 'Digital'];
+
+/** Físico en libros y cómics; Digital en películas, series y documentales. */
+export const formatoPorDefecto = (tipo) => (TIPO[tipo]?.isbn ? 'Físico' : 'Digital');
+
+/** Lleva los formatos antiguos (DVD, Tapa blanda…) a Físico o Digital. Vacío sigue vacío. */
+export function normalizarFormato(valor) {
+  const texto = limpiar(valor);
+  if (!texto) return '';
+  return texto.toLocaleLowerCase('es') === 'digital' ? 'Digital' : 'Físico';
+}
 
 export class ValidacionError extends Error {
   constructor(mensaje) {
@@ -116,13 +122,6 @@ export function ubicacionesDe(items) {
   return unicosOrdenados(items.flatMap((it) => [it.ubicacion, ...(it.temporadas ?? []).map((t) => t.ubicacion)]));
 }
 
-export function formatosDe(tipo, items) {
-  return unicosOrdenados([
-    ...FORMATOS_BASE[tipo],
-    ...items.flatMap((it) => [it.formato, ...(it.temporadas ?? []).map((t) => t.formato)]),
-  ]);
-}
-
 function leerAnio(texto) {
   if (!limpiar(texto)) return null;
   const anio = Number(texto);
@@ -152,13 +151,12 @@ export function construirItem(tipo, campos, { nombre, fecha = hoy(), generarId =
     id = generarId();
   }
 
-  const anio = leerAnio(campos.anio);
-  const formato = limpiar(campos.formato);
+  const formato = normalizarFormato(campos.formato) || formatoPorDefecto(tipo);
   const item = { id, titulo };
   if (tipo === 'documentales') item.subtipo = campos.subtipo === 'serie' ? 'serie' : 'pelicula';
+  if (conAutor(tipo)) item.autor = limpiar(campos.autor);
   Object.assign(item, {
-    autor: limpiar(campos.autor),
-    anio,
+    anio: leerAnio(campos.anio),
     formato,
     ubicacion,
     portada: /^https:\/\//.test(campos.portada ?? '') ? campos.portada : '',
@@ -190,7 +188,7 @@ export function validarTemporadas(filas = []) {
     vistas.add(num);
     const ubicacion = limpiar(fila.ubicacion);
     if (!ubicacion) throw new ValidacionError(`Falta la ubicación de la temporada ${num}.`);
-    return { num, formato: limpiar(fila.formato), ubicacion };
+    return { num, formato: normalizarFormato(fila.formato), ubicacion };
   });
   if (!temporadas.length) throw new ValidacionError('Una serie necesita al menos una temporada.');
   return temporadas.sort((a, b) => a.num - b.num);
@@ -204,13 +202,15 @@ export function editarItem(original, tipo, campos, { nombre, fecha = hoy() }) {
   const item = structuredClone(original);
   item.titulo = limpiar(campos.titulo);
   if (!item.titulo) throw new ValidacionError('El título es obligatorio.');
-  item.autor = limpiar(campos.autor);
+  // Las películas, series y documentales ya no guardan director: al editarlas se limpia.
+  if (conAutor(tipo)) item.autor = limpiar(campos.autor);
+  else delete item.autor;
   item.anio = leerAnio(campos.anio);
   item.notas = String(campos.notas ?? '').trim();
   if (llevaTemporadas(tipo, original.subtipo)) {
     item.temporadas = validarTemporadas(campos.temporadasDetalle);
   } else {
-    item.formato = limpiar(campos.formato);
+    item.formato = normalizarFormato(campos.formato);
     item.ubicacion = limpiar(campos.ubicacion);
     if (!item.ubicacion) throw new ValidacionError('La ubicación es obligatoria.');
   }

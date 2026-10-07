@@ -20,12 +20,10 @@ export function resultadoDeBusqueda(r) {
 }
 
 export function desdePelicula(p) {
-  const directores = (p.credits?.crew ?? []).filter((c) => c.job === 'Director').map((c) => c.name);
   return {
     media: 'movie',
     id: p.id,
     titulo: p.title,
-    autor: [...new Set(directores)].join(', '),
     anio: anioDe(p.release_date),
     portada: imagen(p.poster_path, 'w185'),
     documental: esDocumental(p.genres),
@@ -39,7 +37,6 @@ export function desdeSerie(s) {
     media: 'tv',
     id: s.id,
     titulo: s.name,
-    autor: (s.created_by ?? []).map((c) => c.name).join(', '),
     anio: anioDe(s.first_air_date),
     portada: imagen(s.poster_path, 'w185'),
     documental: esDocumental(s.genres),
@@ -87,7 +84,7 @@ export function crearTmdb(clave, { fetch: fetchImpl = (...a) => globalThis.fetch
     } catch {
       throw new Error('No se puede conectar con TMDB. ¿Hay conexión?');
     }
-    if (res.status === 401) throw new Error('La clave de TMDB no es válida. Revísala en Ajustes.');
+    if (res.status === 401) throw new Error('La clave de TMDB no es válida. Avisa a quien administra la app.');
     if (!res.ok) throw new Error(`TMDB ha respondido con un error (${res.status}).`);
     return res.json();
   }
@@ -98,7 +95,7 @@ export function crearTmdb(clave, { fetch: fetchImpl = (...a) => globalThis.fetch
       return (json.results ?? []).filter((r) => r.media_type === 'movie' || r.media_type === 'tv').map(resultadoDeBusqueda);
     },
     async detalles(media, id) {
-      if (media === 'movie') return desdePelicula(await pedir(`/movie/${id}`, { append_to_response: 'credits' }));
+      if (media === 'movie') return desdePelicula(await pedir(`/movie/${id}`));
       return desdeSerie(await pedir(`/tv/${id}`));
     },
     async saga(coleccion, idPelicula) {

@@ -12,6 +12,11 @@ export const app = {
   cliente: configCompleta(config) ? crearCliente(config) : null,
 };
 
+/** Clave de Google Books o TMDB, de claves.json del repo de datos (solo la cambia el administrador, a mano). */
+export function claveDe(servicio) {
+  return app.almacen.claves[servicio] || '';
+}
+
 /** Sagas por id; si un título apunta a una saga que no está, se deduce un nombre de su id. */
 export function sagaDe(ref) {
   if (!ref?.id) return null;

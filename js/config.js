@@ -1,7 +1,7 @@
 // Configuración de cada dispositivo, guardada en localStorage.
 
 const CLAVE = 'librarium.config';
-const VACIA = { nombre: '', repo: '', token: '', google: '', tmdb: '' };
+const VACIA = { nombre: '', repo: '', token: '' };
 
 export function leerConfig() {
   try {

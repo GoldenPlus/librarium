@@ -50,12 +50,6 @@
       <label>Token de GitHub
         <input name="token" type="password" required autocomplete="off" spellcheck="false">
       </label>
-      <label><span>Clave de Google Books <span class="opcional">(opcional, completa datos de libros)</span></span>
-        <input name="google" autocomplete="off" spellcheck="false">
-      </label>
-      <label><span>Clave de TMDB <span class="opcional">(opcional, para películas y series)</span></span>
-        <input name="tmdb" autocomplete="off" spellcheck="false">
-      </label>
       <p id="ajustes-error" class="error" role="alert"></p>
       <div class="botones">
         <button id="ajustes-cancelar" type="button" class="secundario">Cancelar</button>
@@ -66,7 +60,11 @@
 
   <!-- Escáner -->
   <dialog id="dlg-escaner" class="escaner">
-    <video id="video-escaner" playsinline muted></video>
+    <div class="visor">
+      <video id="video-escaner" playsinline muted></video>
+      <button id="escaner-zoom-mas" type="button" class="zoom" aria-label="Acercar (zoom x2)" hidden>＋</button>
+      <button id="escaner-zoom-menos" type="button" class="zoom" aria-label="Zoom normal" hidden>−</button>
+    </div>
     <p id="escaner-estado" role="status">Apunta al código de barras del libro.</p>
     <div class="botones">
       <button id="escaner-cancelar" type="button" class="secundario">Cancelar</button>
@@ -123,7 +121,7 @@
       <label>Título
         <input name="titulo" required autocomplete="off">
       </label>
-      <label><span id="etiqueta-autor">Autor</span>
+      <label id="campo-autor"><span id="etiqueta-autor">Autor</span>
         <input name="autor" autocomplete="off">
       </label>
       <label>Año
@@ -136,7 +134,7 @@
         </span>
       </label>
       <label id="campo-formato">Formato
-        <input name="formato" list="dl-formatos" autocomplete="off">
+        <select name="formato" id="alta-formato"></select>
       </label>
       <label id="campo-ubicacion">Ubicación
         <input name="ubicacion" list="dl-ubicaciones" required autocomplete="off">
@@ -161,7 +159,6 @@
       <label>Notas
         <textarea name="notas" rows="2"></textarea>
       </label>
-      <datalist id="dl-formatos"></datalist>
       <datalist id="dl-ubicaciones"></datalist>
       <datalist id="dl-sagas"></datalist>
 

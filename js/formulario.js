@@ -1,13 +1,13 @@
 // Formulario de alta y edición: validación, duplicados, saga y guardado con reintento.
 
-import { TIPOS, TIPO, construirItem, editarItem, sinCambios, aplicarCambios, anadirTemporadas, dondeEsta, formatosDe, hoy, llevaTemporadas, textoTemporadas, ubicacionesDe } from './modelo.js';
+import { TIPOS, TIPO, construirItem, editarItem, sinCambios, aplicarCambios, anadirTemporadas, dondeEsta, FORMATOS, formatoPorDefecto, normalizarFormato, conAutor, hoy, llevaTemporadas, textoTemporadas, ubicacionesDe } from './modelo.js';
 import { comprobarEdicion, prepararAlta, DuplicadoError, ParecidoError, SerieExistenteError } from './duplicados.js';
 import { leerCamposSaga, asegurarSaga, idSaga } from './sagas.js';
 import { normalizarIsbn } from './isbn.js';
 import { buscarLibro } from './catalogo.js';
 import { escanearIsbn } from './escaner.js';
 import { crearTmdb } from './tmdb.js';
-import { app, sagaDe } from './estado.js';
+import { app, claveDe, sagaDe } from './estado.js';
 import { $, el, aviso } from './dom.js';
 
 const form = () => $('#form-alta');
@@ -43,9 +43,9 @@ function ajustar() {
   $('#campo-temporadas-edicion').hidden = !filasDeTemporadas;
   $('#campo-formato').hidden = filasDeTemporadas;
   $('#campo-ubicacion').hidden = filasDeTemporadas;
-  $('#etiqueta-autor').textContent = TIPO[tipo].autor;
+  $('#campo-autor').hidden = !conAutor(tipo);
+  $('#etiqueta-autor').textContent = TIPO[tipo].autor ?? '';
 
-  rellenarDatalist('#dl-formatos', formatosDe(tipo, app.almacen.items(tipo)));
   rellenarDatalist('#dl-ubicaciones', ubicacionesDe(TIPOS.flatMap((t) => app.almacen.items(t.clave))));
   rellenarDatalist('#dl-sagas', app.almacen.items('sagas').filter((s) => s.tipo === tipo).map((s) => s.nombre));
   sugerirTotal();
@@ -111,10 +111,12 @@ function ofrecerTemporadas(tipo, existente, item) {
   );
 }
 
+const opcionesFormato = (elegido) => FORMATOS.map((v) => el('option', { value: v, selected: v === elegido }, v));
+
 function filaTemporada({ num, formato = '', ubicacion = '' }) {
   return el('div', { class: 'fila-temporada' },
     el('input', { type: 'number', min: 1, max: 100, value: num, 'data-campo': 'num', 'aria-label': 'Número de temporada' }),
-    el('input', { 'data-campo': 'formato', list: 'dl-formatos', value: formato, placeholder: 'Formato', 'aria-label': 'Formato' }),
+    el('select', { 'data-campo': 'formato', 'aria-label': 'Formato' }, opcionesFormato(normalizarFormato(formato) || formatoPorDefecto(tipoActual()))),
     el('input', { 'data-campo': 'ubicacion', list: 'dl-ubicaciones', value: ubicacion, placeholder: 'Ubicación', 'aria-label': 'Ubicación' }),
     el('button', { type: 'button', class: 'icono', 'aria-label': `Quitar temporada`, onclick: (e) => e.currentTarget.parentElement.remove() }, '✕'),
   );
@@ -122,7 +124,7 @@ function filaTemporada({ num, formato = '', ubicacion = '' }) {
 
 function leerFilasTemporadas() {
   return [...document.querySelectorAll('.fila-temporada')].map((fila) =>
-    Object.fromEntries([...fila.querySelectorAll('input')].map((i) => [i.dataset.campo, i.value])),
+    Object.fromEntries([...fila.querySelectorAll('input, select')].map((i) => [i.dataset.campo, i.value])),
   );
 }
 
@@ -180,7 +182,7 @@ async function procesarIsbn(texto) {
   estadoIsbn('Buscando datos…');
   const boton = $('#btn-buscar-isbn');
   boton.disabled = true;
-  const datos = await buscarLibro(isbn, { claveGoogle: app.config.google });
+  const datos = await buscarLibro(isbn, { claveGoogle: claveDe('google') });
   boton.disabled = false;
   if (normalizarIsbn(f.isbn.value) !== isbn) return; // Se cambió el ISBN mientras tanto.
 
@@ -205,12 +207,27 @@ function cerrarEscaner() {
   if ($('#dlg-escaner').open) $('#dlg-escaner').close();
 }
 
+/** Con zoom normal solo se ve «+»; con zoom x2, solo «−». null: ninguno (la cámara no tiene zoom o aún no está lista). */
+function mostrarZoom(ampliado) {
+  $('#escaner-zoom-mas').hidden = ampliado !== false;
+  $('#escaner-zoom-menos').hidden = ampliado !== true;
+}
+
+function cambiarZoom(ampliado) {
+  mostrarZoom(ampliado);
+  escaneo?.zoom(ampliado);
+}
+
 export async function abrirEscaner() {
   const estado = $('#escaner-estado');
   estado.textContent = 'Abriendo la cámara…';
+  mostrarZoom(null);
   $('#dlg-escaner').showModal();
-  escaneo = escanearIsbn($('#video-escaner'), {
+  const actual = (escaneo = escanearIsbn($('#video-escaner'), {
     alIgnorar: (codigo) => (estado.textContent = `El código ${codigo} no es un ISBN. Busca el código que empieza por 978 o 979.`),
+  }));
+  actual.admiteZoom.then((admite) => {
+    if (admite && escaneo === actual) mostrarZoom(false);
   });
   setTimeout(() => {
     if (escaneo && estado.textContent === 'Abriendo la cámara…') estado.textContent = 'Apunta al código de barras del libro.';
@@ -248,8 +265,8 @@ function limpiarTmdb() {
 }
 
 function clienteTmdb() {
-  if (!app.config.tmdb) throw new Error('Para buscar en TMDB, pon su clave en Ajustes (⚙). Mientras, rellena los datos a mano.');
-  return crearTmdb(app.config.tmdb);
+  if (!claveDe('tmdb')) throw new Error('No hay clave de TMDB configurada en el repositorio de datos. Rellena los datos a mano.');
+  return crearTmdb(claveDe('tmdb'));
 }
 
 const NOMBRE_MEDIA = { movie: 'Película', tv: 'Serie' };
@@ -294,7 +311,6 @@ async function elegirTmdb(resultado) {
     f.tipo.value = tipo;
     f.subtipo.value = d.media === 'tv' ? 'serie' : 'pelicula';
     f.titulo.value = d.titulo;
-    f.autor.value = d.autor;
     f.anio.value = d.anio ?? '';
     f.tmdb.value = `${d.media}:${d.id}`;
     f.temporadas_total.value = d.temporadas_total ?? '';
@@ -336,6 +352,7 @@ export function abrirAlta(tipoPorDefecto) {
   modo = { edicion: false };
   $('#form-titulo').textContent = 'Añadir';
   f.tipo.value = tipoPorDefecto;
+  f.formato.value = formatoPorDefecto(tipoPorDefecto);
   f.temporadas.placeholder = 'por ejemplo 1-3, 5';
   $('#filas-temporadas').replaceChildren();
   limpiarTmdb();
@@ -354,7 +371,8 @@ export function abrirEdicion(tipo, item) {
   $('#form-titulo').textContent = 'Editar';
   f.tipo.value = tipo;
   if (item.subtipo) f.subtipo.value = item.subtipo;
-  for (const campo of ['titulo', 'autor', 'formato', 'ubicacion', 'notas']) f[campo].value = item[campo] ?? '';
+  for (const campo of ['titulo', 'autor', 'ubicacion', 'notas']) f[campo].value = item[campo] ?? '';
+  f.formato.value = normalizarFormato(item.formato) || formatoPorDefecto(tipo);
   f.anio.value = item.anio ?? '';
   f.saga.value = sagaDe(item.saga)?.nombre ?? '';
   f.saga_orden.value = item.saga?.orden ?? '';
@@ -492,7 +510,11 @@ export function iniciarFormulario({ despuesDeGuardar }) {
   alGuardar = despuesDeGuardar;
   const f = form();
   $('#alta-tipo').replaceChildren(...TIPOS.map((t) => el('option', { value: t.clave }, t.singular)));
-  f.tipo.addEventListener('change', ajustar);
+  $('#alta-formato').replaceChildren(...opcionesFormato());
+  f.tipo.addEventListener('change', () => {
+    f.formato.value = formatoPorDefecto(f.tipo.value);
+    ajustar();
+  });
   f.subtipo.addEventListener('change', ajustar);
   f.saga.addEventListener('input', sugerirTotal);
   f.addEventListener('input', (e) => {
@@ -530,6 +552,8 @@ export function iniciarFormulario({ despuesDeGuardar }) {
     estadoIsbn('');
   });
   $('#escaner-cancelar').addEventListener('click', cerrarEscaner);
+  $('#escaner-zoom-mas').addEventListener('click', () => cambiarZoom(true));
+  $('#escaner-zoom-menos').addEventListener('click', () => cambiarZoom(false));
   $('#dlg-escaner').addEventListener('cancel', (e) => {
     e.preventDefault();
     cerrarEscaner();

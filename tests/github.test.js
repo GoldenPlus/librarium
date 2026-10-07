@@ -89,3 +89,11 @@ test('si mutar devuelve null no se escribe nada', async () => {
   assert.equal(res.datos.items.length, 1);
   assert.deepEqual(gh.escrituras, []);
 });
+
+test('claves.json se lee sin lista "items"', async () => {
+  const contenido = codificarBase64(JSON.stringify({ version: 1, google: 'g', tmdb: 't' }));
+  const f = async () => ({ ok: true, status: 200, json: async () => ({ sha: 's', encoding: 'base64', content: contenido }) });
+  const cliente = crearCliente({ token: 't', repo: 'a/b', fetch: f });
+  assert.equal((await cliente.leer('claves.json', { lista: false })).datos.tmdb, 't');
+  await assert.rejects(cliente.leer('claves.json'), /items/);
+});

@@ -1,6 +1,6 @@
 // Interfaz: pestañas, listado, búsqueda, ficha, sagas, ajustes y arranque.
 
-import { TIPOS, TIPO, dondeEsta, textoTemporadas } from './modelo.js';
+import { TIPOS, TIPO, conAutor, dondeEsta, textoTemporadas } from './modelo.js';
 import { guardarConfig, normalizarRepo } from './config.js';
 import { crearCliente } from './github.js';
 import { terminosDe, coincide } from './busqueda.js';
@@ -54,8 +54,8 @@ function portada(item, tipo) {
   return el('div', { class: 'portada vacia', 'aria-hidden': 'true' }, TIPO[tipo].icono);
 }
 
-function lineaSecundaria(item) {
-  const partes = [item.autor, item.anio];
+function lineaSecundaria(item, tipo) {
+  const partes = [conAutor(tipo) && item.autor, item.anio];
   if (item.temporadas?.length) partes.push(`T. ${textoTemporadas(item)}`);
   if (item.saga) partes.push(`${sagaDe(item.saga).nombre} #${item.saga.orden}`);
   return partes.filter(Boolean).join(' · ');
@@ -97,7 +97,7 @@ function tarjetaTitulo({ tipo, item }) {
     portada(item, tipo),
     el('div', { class: 'info' },
       el('strong', {}, item.titulo),
-      el('span', { class: 'linea' }, lineaSecundaria(item)),
+      el('span', { class: 'linea' }, lineaSecundaria(item, tipo)),
       el('span', { class: 'ubic' }, dondeEsta(item) && `📍 ${dondeEsta(item)}`),
     ),
     pestana === 'todo' && el('span', { class: 'chip' }, TIPO[tipo].singular),
@@ -168,7 +168,7 @@ function abrirDetalle(tipo, item) {
   const saga = sagaDe(item.saga);
   const filas = [
     ['Tipo', item.subtipo === 'serie' ? 'Docuserie' : TIPO[tipo].singular],
-    [TIPO[tipo].autor, item.autor],
+    ...(conAutor(tipo) ? [[TIPO[tipo].autor, item.autor]] : []),
     ['Año', item.anio],
     ['Formato', item.formato],
     ['Ubicación', item.ubicacion],
@@ -243,7 +243,7 @@ async function borrar() {
 
 function abrirAjustes() {
   const f = $('#form-ajustes');
-  for (const campo of ['nombre', 'repo', 'token', 'google', 'tmdb']) f[campo].value = app.config[campo];
+  for (const campo of ['nombre', 'repo', 'token']) f[campo].value = app.config[campo];
   $('#ajustes-error').textContent = '';
   $('#ajustes-cancelar').hidden = !app.cliente;
   $('#dlg-ajustes').showModal();
@@ -254,7 +254,7 @@ async function guardarAjustes(evento) {
   const f = evento.target;
   const error = $('#ajustes-error');
   const repo = normalizarRepo(f.repo.value);
-  const nueva = { nombre: limpiar(f.nombre.value), repo, token: f.token.value.trim(), google: f.google.value.trim(), tmdb: f.tmdb.value.trim() };
+  const nueva = { nombre: limpiar(f.nombre.value), repo, token: f.token.value.trim() };
   if (!nueva.nombre || !nueva.token) return void (error.textContent = 'Rellena tu nombre y el token.');
   if (!repo) return void (error.textContent = 'El repositorio debe tener la forma usuario/nombre.');
 

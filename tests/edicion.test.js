@@ -4,7 +4,7 @@ import { editarItem, sinCambios, aplicarCambios, ValidacionError } from '../js/m
 import { comprobarEdicion, ParecidoError } from '../js/duplicados.js';
 
 const libro = {
-  id: 'isbn:9780306406157', titulo: 'Pedro Páramo', autor: 'Juan Rulfo', anio: 1955, formato: 'Tapa blanda',
+  id: 'isbn:9780306406157', titulo: 'Pedro Páramo', autor: 'Juan Rulfo', anio: 1955, formato: 'Físico',
   ubicacion: 'Estantería 2', portada: '', notas: '', alta_por: 'Marta', alta_fecha: '2026-10-04', mod_por: null, mod_fecha: null,
 };
 const opciones = { nombre: 'Xabier', fecha: '2026-10-10' };
@@ -25,11 +25,24 @@ test('sinCambios ignora quién y cuándo', () => {
   assert.ok(!sinCambios(libro, editarItem(libro, 'libros', campos({ notas: 'firmado' }), opciones)));
 });
 
+test('formatos antiguos pasan a Físico o Digital al editar', () => {
+  assert.equal(editarItem({ ...libro, formato: 'Tapa blanda' }, 'libros', campos({ formato: 'Tapa blanda' }), opciones).formato, 'Físico');
+  assert.equal(editarItem(libro, 'libros', campos({ formato: 'digital' }), opciones).formato, 'Digital');
+});
+
+test('editar una película quita el director antiguo y conserva el año', () => {
+  const peli = { id: 'tmdb:movie:603', titulo: 'Matrix', autor: 'Lana Wachowski', anio: 1999, formato: 'DVD', ubicacion: 'A', notas: '' };
+  const editada = editarItem(peli, 'peliculas', { titulo: 'Matrix', autor: 'X', anio: '2000', formato: 'Físico', ubicacion: 'A' }, opciones);
+  assert.equal('autor' in editada, false);
+  assert.equal(editada.anio, 2000);
+  assert.equal(editada.formato, 'Físico');
+});
+
 test('editar una serie valida sus temporadas', () => {
-  const serie = { id: 'tmdb:tv:1', titulo: 'The Wire', autor: '', anio: null, formato: '', ubicacion: '', notas: '', temporadas: [{ num: 1, formato: 'DVD', ubicacion: 'A' }] };
-  const filas = [{ num: '2', formato: 'Blu-ray', ubicacion: 'B' }, { num: '1', formato: 'DVD', ubicacion: 'A' }];
+  const serie = { id: 'tmdb:tv:1', titulo: 'The Wire', formato: '', ubicacion: '', notas: '', temporadas: [{ num: 1, formato: 'DVD', ubicacion: 'A' }] };
+  const filas = [{ num: '2', formato: 'Digital', ubicacion: 'B' }, { num: '1', formato: 'DVD', ubicacion: 'A' }];
   const editada = editarItem(serie, 'series', { titulo: 'The Wire', temporadasDetalle: filas }, opciones);
-  assert.deepEqual(editada.temporadas.map((t) => t.num), [1, 2]);
+  assert.deepEqual(editada.temporadas.map((t) => [t.num, t.formato]), [[1, 'Físico'], [2, 'Digital']]);
   assert.throws(() => editarItem(serie, 'series', { titulo: 'X', temporadasDetalle: [{ num: '1', ubicacion: '' }] }, opciones), /ubicación de la temporada 1/);
   assert.throws(() => editarItem(serie, 'series', { titulo: 'X', temporadasDetalle: [{ num: '1', ubicacion: 'A' }, { num: '1', ubicacion: 'B' }] }, opciones), /repetida/);
   assert.throws(() => editarItem(serie, 'series', { titulo: 'X', temporadasDetalle: [] }, opciones), ValidacionError);

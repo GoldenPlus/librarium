@@ -17,7 +17,20 @@ test('libro con ISBN-10 usa id isbn de 13 dígitos', () => {
 test('sin ISBN el id es manual', () => {
   const item = construirItem('peliculas', { titulo: 'Alien', ubicacion: 'Mueble TV' }, opciones);
   assert.equal(item.id, 'manual:abc123');
-  assert.equal(item.anio, null);
+});
+
+test('películas, series y documentales guardan año pero no director', () => {
+  const item = construirItem('peliculas', { titulo: 'Alien', autor: 'Ridley Scott', anio: '1979', ubicacion: 'Mueble TV' }, opciones);
+  assert.equal('autor' in item, false);
+  assert.equal(item.anio, 1979);
+});
+
+test('formato por defecto: Físico en libros y cómics, Digital en audiovisual', () => {
+  assert.equal(construirItem('libros', { titulo: 'X', ubicacion: 'A' }, opciones).formato, 'Físico');
+  assert.equal(construirItem('comics', { titulo: 'X', ubicacion: 'A' }, opciones).formato, 'Físico');
+  assert.equal(construirItem('peliculas', { titulo: 'X', ubicacion: 'A' }, opciones).formato, 'Digital');
+  assert.equal(construirItem('documentales', { titulo: 'X', ubicacion: 'A' }, opciones).formato, 'Digital');
+  assert.equal(construirItem('libros', { titulo: 'X', ubicacion: 'A', formato: 'Digital' }, opciones).formato, 'Digital');
 });
 
 test('título y ubicación son obligatorios', () => {
@@ -27,10 +40,10 @@ test('título y ubicación son obligatorios', () => {
 });
 
 test('las series guardan formato y ubicación en cada temporada', () => {
-  const item = construirItem('series', { titulo: 'Breaking Bad', formato: 'DVD', ubicacion: 'Estantería 3', temporadas: '1-2' }, opciones);
+  const item = construirItem('series', { titulo: 'Breaking Bad', formato: 'Físico', ubicacion: 'Estantería 3', temporadas: '1-2' }, opciones);
   assert.deepEqual(item.temporadas, [
-    { num: 1, formato: 'DVD', ubicacion: 'Estantería 3' },
-    { num: 2, formato: 'DVD', ubicacion: 'Estantería 3' },
+    { num: 1, formato: 'Físico', ubicacion: 'Estantería 3' },
+    { num: 2, formato: 'Físico', ubicacion: 'Estantería 3' },
   ]);
   assert.equal(item.formato, '');
   assert.equal(item.ubicacion, '');
