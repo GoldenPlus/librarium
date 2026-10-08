@@ -73,24 +73,56 @@ const CAMARA = { audio: false, video: { facingMode: { ideal: 'environment' }, wi
 // Claves de DecodeHintType de ZXing, que el paquete para navegador no exporta.
 const PISTA_FORMATOS = 2;
 const PISTA_ESFORZARSE = 3;
-// Errores con los que ZXing sigue intentándolo: «no hay código en este fotograma». Cualquier otro apaga la cámara.
+// Errores de ZXing que solo significan «no hay código legible en este fotograma».
 const FALLOS_NORMALES = new Set(['NotFoundException', 'ChecksumException', 'FormatException']);
 
 /**
- * Lee con ZXing: solo EAN-13 y revisando todas las líneas del fotograma. Devuelve la función que lo para.
- * Con «esforzarse», ZXing también prueba la imagen girada, pero girar falla en el navegador
- * («Could not create a Canvas element») y el error apaga la cámara; por eso se desactiva el giro.
- * Si aun así ZXing se detiene por un error, `alFallar(error)` lo avisa en vez de dejar el visor en negro.
+ * Cada intento analiza el fotograma de una forma distinta, por turnos. Con más brillo y contraste las barras
+ * engordadas por la tinta se afinan y se leen mucho mejor; la variante sin filtro queda para los códigos claros o apagados.
  */
-async function leerConZXing(ZX, stream, video, alLeer, alFallar) {
+const VARIANTES = [
+  { escala: 1, filtro: 'brightness(1.25) contrast(1.4)' },
+  { escala: 0.75, filtro: 'brightness(1.25) contrast(1.4)' },
+  { escala: 1, filtro: 'none' },
+];
+
+/**
+ * Busca códigos con ZXing cada 100 ms en una copia del fotograma: solo EAN-13 y revisando todas sus líneas.
+ * Devuelve la función que lo para. `alFallar(error)` avisa si ZXing falla de verdad.
+ * Con «esforzarse», ZXing también prueba la imagen girada, pero girar falla en el navegador
+ * («Could not create a Canvas element»); por eso se desactiva el giro.
+ */
+function leerConZXing(ZX, video, alLeer, alFallar) {
   ZX.HTMLCanvasElementLuminanceSource.prototype.isRotateSupported = () => false;
-  const pistas = new Map([[PISTA_FORMATOS, [ZX.BarcodeFormat.EAN_13]], [PISTA_ESFORZARSE, true]]);
-  const lector = new ZX.BrowserMultiFormatOneDReader(pistas, { delayBetweenScanAttempts: 100 });
-  const controles = await lector.decodeFromStream(stream, video, (lectura, error) => {
-    if (lectura) alLeer(lectura.getText());
-    else if (error && !FALLOS_NORMALES.has(error.getKind?.())) alFallar(error);
-  });
-  return () => controles.stop();
+  const lector = new ZX.BrowserMultiFormatOneDReader(new Map([[PISTA_FORMATOS, [ZX.BarcodeFormat.EAN_13]], [PISTA_ESFORZARSE, true]]));
+  const lienzo = document.createElement('canvas');
+  const contexto = lienzo.getContext('2d', { willReadFrequently: true });
+  let activo = true;
+  let intento = 0;
+  let temporizador;
+  const paso = () => {
+    if (!activo) return;
+    if (video.readyState >= 2 && video.videoWidth) {
+      const { escala, filtro } = VARIANTES[intento++ % VARIANTES.length];
+      const ancho = Math.round(video.videoWidth * escala);
+      const alto = Math.round(video.videoHeight * escala);
+      if (lienzo.width !== ancho) lienzo.width = ancho;
+      if (lienzo.height !== alto) lienzo.height = alto;
+      contexto.filter = filtro;
+      contexto.drawImage(video, 0, 0, ancho, alto);
+      try {
+        alLeer(lector.decodeFromCanvas(lienzo).getText());
+      } catch (e) {
+        if (!FALLOS_NORMALES.has(e?.getKind?.())) return alFallar(e);
+      }
+    }
+    temporizador = setTimeout(paso, 100);
+  };
+  paso();
+  return () => {
+    activo = false;
+    clearTimeout(temporizador);
+  };
 }
 
 /**
@@ -145,9 +177,11 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
       const nuevo = await navigator.mediaDevices.getUserMedia(CAMARA).catch(errorDeCamara);
       if (terminado) return nuevo.getTracks().forEach((pista) => pista.stop());
       flujo = nuevo;
-      parar = await leerConZXing(ZX, flujo, video, alLeer, (error) =>
+      video.srcObject = flujo;
+      await video.play().catch(errorDeCamara);
+      parar = leerConZXing(ZX, video, alLeer, (error) =>
         fallar(new Error(`El lector de códigos se ha detenido (${error.message || error.name}). Cierra y vuelve a abrir la cámara, o teclea el ISBN.`)),
-      ).catch(errorDeCamara);
+      );
       if (terminado) return apagar();
       avisarCamara();
     })().catch(fallar);
