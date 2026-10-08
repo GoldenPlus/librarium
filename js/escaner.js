@@ -85,13 +85,21 @@ async function detectorNativo() {
   }
 }
 
-/** Busca códigos con el lector nativo cada 100 ms. Devuelve la función que lo para. */
+/**
+ * Busca códigos con el lector nativo cada 100 ms. Devuelve la función que lo para.
+ * Analiza una copia del fotograma en un lienzo: pasarle el <video> directamente lo deja en negro en algunos Android.
+ */
 function leerConNativo(detector, video, alLeer) {
   let activo = true;
+  const lienzo = document.createElement('canvas');
+  const contexto = lienzo.getContext('2d');
   (async () => {
     while (activo) {
-      if (video.readyState >= 2) {
-        const codigos = await detector.detect(video).catch(() => []);
+      if (video.readyState >= 2 && video.videoWidth) {
+        if (lienzo.width !== video.videoWidth) lienzo.width = video.videoWidth;
+        if (lienzo.height !== video.videoHeight) lienzo.height = video.videoHeight;
+        contexto.drawImage(video, 0, 0);
+        const codigos = await detector.detect(lienzo).catch(() => []);
         for (const codigo of codigos) if (activo) alLeer(codigo.rawValue);
       }
       await new Promise((r) => setTimeout(r, 100));
