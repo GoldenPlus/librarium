@@ -73,17 +73,23 @@ const CAMARA = { audio: false, video: { facingMode: { ideal: 'environment' }, wi
 // Claves de DecodeHintType de ZXing, que el paquete para navegador no exporta.
 const PISTA_FORMATOS = 2;
 const PISTA_ESFORZARSE = 3;
+// Errores con los que ZXing sigue intentándolo: «no hay código en este fotograma». Cualquier otro apaga la cámara.
+const FALLOS_NORMALES = new Set(['NotFoundException', 'ChecksumException', 'FormatException']);
 
 /**
  * Lee con ZXing: solo EAN-13 y revisando todas las líneas del fotograma. Devuelve la función que lo para.
  * Con «esforzarse», ZXing también prueba la imagen girada, pero girar falla en el navegador
  * («Could not create a Canvas element») y el error apaga la cámara; por eso se desactiva el giro.
+ * Si aun así ZXing se detiene por un error, `alFallar(error)` lo avisa en vez de dejar el visor en negro.
  */
-async function leerConZXing(ZX, stream, video, alLeer) {
+async function leerConZXing(ZX, stream, video, alLeer, alFallar) {
   ZX.HTMLCanvasElementLuminanceSource.prototype.isRotateSupported = () => false;
   const pistas = new Map([[PISTA_FORMATOS, [ZX.BarcodeFormat.EAN_13]], [PISTA_ESFORZARSE, true]]);
   const lector = new ZX.BrowserMultiFormatOneDReader(pistas, { delayBetweenScanAttempts: 100 });
-  const controles = await lector.decodeFromStream(stream, video, (lectura) => lectura && alLeer(lectura.getText()));
+  const controles = await lector.decodeFromStream(stream, video, (lectura, error) => {
+    if (lectura) alLeer(lectura.getText());
+    else if (error && !FALLOS_NORMALES.has(error.getKind?.())) alFallar(error);
+  });
   return () => controles.stop();
 }
 
@@ -97,6 +103,7 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
   let flujo = null;
   let parar = () => {};
   let resolverResultado = () => {};
+  let rechazarResultado = () => {};
   let avisarCamara = () => {};
   const camaraLista = new Promise((resolver) => (avisarCamara = resolver));
   delete video.dataset.zoomNormal;
@@ -113,6 +120,12 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
     apagar();
     resolverResultado(valor);
   };
+  const fallar = (e) => {
+    if (terminado) return;
+    terminado = true;
+    apagar();
+    rechazarResultado(e);
+  };
   const alLeer = (texto) => {
     if (terminado) return;
     const isbn = isbnDeCodigo(texto);
@@ -122,6 +135,7 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
 
   const resultado = new Promise((resolver, rechazar) => {
     resolverResultado = resolver;
+    rechazarResultado = rechazar;
     if (!navigator.mediaDevices?.getUserMedia) {
       rechazar(new Error('Este navegador no permite usar la cámara aquí. Teclea el ISBN a mano.'));
       return;
@@ -131,15 +145,12 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
       const nuevo = await navigator.mediaDevices.getUserMedia(CAMARA).catch(errorDeCamara);
       if (terminado) return nuevo.getTracks().forEach((pista) => pista.stop());
       flujo = nuevo;
-      parar = await leerConZXing(ZX, flujo, video, alLeer).catch(errorDeCamara);
+      parar = await leerConZXing(ZX, flujo, video, alLeer, (error) =>
+        fallar(new Error(`El lector de códigos se ha detenido (${error.message || error.name}). Cierra y vuelve a abrir la cámara, o teclea el ISBN.`)),
+      ).catch(errorDeCamara);
       if (terminado) return apagar();
       avisarCamara();
-    })().catch((e) => {
-      if (terminado) return;
-      terminado = true;
-      apagar();
-      rechazar(e);
-    });
+    })().catch(fallar);
   });
 
   return {

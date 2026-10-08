@@ -225,6 +225,8 @@ export async function abrirEscaner() {
   const estado = $('#escaner-estado');
   estado.textContent = 'Abriendo la cámara…';
   mostrarZoom(null);
+  // Al cerrarse, el diálogo devuelve el foco a donde estaba; si era un campo de texto, saldría el teclado.
+  document.activeElement?.blur();
   $('#dlg-escaner').showModal();
   const actual = (escaneo = escanearIsbn($('#video-escaner'), {
     alIgnorar: (codigo) => (estado.textContent = `El código ${codigo} no es un ISBN. Busca el código que empieza por 978 o 979.`),
@@ -348,7 +350,8 @@ async function elegirTmdb(resultado) {
 
 // ---------- Abrir
 
-export function abrirAlta(tipoPorDefecto) {
+/** `enfocar: false` (al ir directo al escáner) no pone el foco en el título, para que no salga el teclado. */
+export function abrirAlta(tipoPorDefecto, { enfocar = true } = {}) {
   const f = form();
   f.reset();
   modo = { edicion: false };
@@ -363,7 +366,7 @@ export function abrirAlta(tipoPorDefecto) {
   limpiarMensajes();
   ajustar();
   $('#dlg-alta').showModal();
-  f.titulo.focus();
+  if (enfocar) f.titulo.focus();
 }
 
 export function abrirEdicion(tipo, item) {

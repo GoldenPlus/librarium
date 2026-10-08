@@ -311,7 +311,7 @@ function iniciar() {
   // Escanear directamente: abre el alta (libro, o cómic si se está en esa pestaña) con la cámara.
   $('#btn-escanear-rapido').addEventListener('click', () => {
     if (!app.cliente) return abrirAjustes();
-    abrirAlta(pestana === 'comics' ? 'comics' : 'libros');
+    abrirAlta(pestana === 'comics' ? 'comics' : 'libros', { enfocar: false });
     abrirEscaner();
   });
 
