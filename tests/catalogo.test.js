@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buscarLibro, desdeOpenLibrary, desdeGoogleBooks } from '../js/catalogo.js';
+import { buscarLibro, desdeOpenLibrary, desdeGoogleBooks, motivoFalloGoogle } from '../js/catalogo.js';
 import { isbnDeCodigo } from '../js/isbn.js';
 
 // Respuestas reales recortadas (Open Library, sep 2026).
@@ -48,14 +48,15 @@ function fetchFalso(rutas) {
 
 test('con Open Library completo no se consulta Google Books', async () => {
   const f = fetchFalso({ '/isbn/': edicion, 'search.json': busqueda });
-  const r = await buscarLibro('9788433973306', { fetch: f.fetch });
+  const { libro: r, errorGoogle } = await buscarLibro('9788433973306', { fetch: f.fetch });
+  assert.equal(errorGoogle, null);
   assert.equal(r.titulo, 'Viajes con Heródoto');
   assert.ok(!f.pedidas.some((u) => u.includes('googleapis')));
 });
 
 test('sin datos en Open Library se usa Google Books, con clave si la hay', async () => {
   const f = fetchFalso({ googleapis: google });
-  const r = await buscarLibro('9788408172178', { fetch: f.fetch, claveGoogle: 'abc' });
+  const { libro: r } = await buscarLibro('9788408172178', { fetch: f.fetch, claveGoogle: 'abc' });
   assert.equal(r.titulo, 'Escrito en el agua');
   assert.equal(r.fuente, 'Google Books');
   assert.ok(f.pedidas.some((u) => u.includes('&key=abc')));
@@ -63,12 +64,25 @@ test('sin datos en Open Library se usa Google Books, con clave si la hay', async
 
 test('Google Books completa lo que falta en Open Library', async () => {
   const f = fetchFalso({ '/isbn/': { title: 'Escrito en el agua', publish_date: '2017' }, 'search.json': { docs: [] }, googleapis: google });
-  const r = await buscarLibro('9788408172178', { fetch: f.fetch });
+  const { libro: r } = await buscarLibro('9788408172178', { fetch: f.fetch });
   assert.equal(r.autor, 'Paula Hawkins');
   assert.equal(r.fuente, 'Open Library y Google Books');
 });
 
-test('cuota agotada o sin red: null, sin lanzar', async () => {
+test('cuota agotada o sin red: sin libro y con el motivo, sin lanzar', async () => {
   const f = fetchFalso({ openlibrary: new TypeError('Failed to fetch'), googleapis: 429 });
-  assert.equal(await buscarLibro('9788408172178', { fetch: f.fetch }), null);
+  assert.deepEqual(await buscarLibro('9788408172178', { fetch: f.fetch }), { libro: null, errorGoogle: 'se ha agotado la cuota diaria de consultas' });
+  const sinRed = fetchFalso({ openlibrary: new TypeError('Failed to fetch'), googleapis: new TypeError('Failed to fetch') });
+  assert.equal((await buscarLibro('9788408172178', { fetch: sinRed.fetch })).errorGoogle, 'no hay conexión');
+});
+
+test('Google Books sin el libro no es un error', async () => {
+  const f = fetchFalso({ googleapis: { kind: 'books#volumes', totalItems: 0 } });
+  assert.deepEqual(await buscarLibro('9788408172178', { fetch: f.fetch }), { libro: null, errorGoogle: null });
+});
+
+test('motivo del fallo de Google Books', () => {
+  assert.equal(motivoFalloGoogle(400, 'API key not valid. Please pass a valid API key.'), 'la clave de Google Books no es válida');
+  assert.equal(motivoFalloGoogle(403, "Quota exceeded for quota metric 'Queries'"), 'se ha agotado la cuota diaria de consultas');
+  assert.equal(motivoFalloGoogle(500), 'error 500');
 });

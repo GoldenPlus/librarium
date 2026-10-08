@@ -185,12 +185,16 @@ async function procesarIsbn(texto, { enfocar = true } = {}) {
   estadoIsbn('Buscando datos…');
   const boton = $('#btn-buscar-isbn');
   boton.disabled = true;
-  const datos = await buscarLibro(isbn, { claveGoogle: claveDe('google') });
+  const { libro: datos, errorGoogle } = await buscarLibro(isbn, { claveGoogle: claveDe('google') });
   boton.disabled = false;
   if (normalizarIsbn(f.isbn.value) !== isbn) return; // Se cambió el ISBN mientras tanto.
 
   if (!datos) {
-    estadoIsbn('No hay datos de este ISBN en Open Library ni Google Books. Rellena el resto a mano; el ISBN se guarda igual.');
+    estadoIsbn(
+      errorGoogle
+        ? `Open Library no tiene este ISBN y Google Books no ha respondido: ${errorGoogle}. Rellena el resto a mano; el ISBN se guarda igual.`
+        : 'Ni Open Library ni Google Books tienen este ISBN. Rellena el resto a mano; el ISBN se guarda igual.',
+    );
     if (enfocar) f.titulo.focus();
     return;
   }
@@ -531,6 +535,7 @@ export function iniciarFormulario({ despuesDeGuardar }) {
   });
   $('#alta-forzar').addEventListener('click', () => accionAviso());
   $('#alta-cancelar').addEventListener('click', () => $('#dlg-alta').close());
+  $('#alta-cerrar').addEventListener('click', () => $('#dlg-alta').close());
   $('#btn-temporada').addEventListener('click', anadirFilaTemporada);
 
   $('#btn-tmdb').addEventListener('click', buscarTmdb);

@@ -61,16 +61,38 @@ async function json(fetchImpl, url) {
   }
 }
 
-/** Devuelve { titulo, autor, anio, portada, fuente } o null si ninguna fuente lo conoce. */
+/** Explica por qué ha fallado Google Books, para distinguirlo de «no tiene ese libro». */
+export function motivoFalloGoogle(estado, mensaje = '') {
+  if (estado === 429 || /quota/i.test(mensaje)) return 'se ha agotado la cuota diaria de consultas';
+  if (/API key/i.test(mensaje)) return 'la clave de Google Books no es válida';
+  return `error ${estado}`;
+}
+
+/** Como `json`, pero si Google Books falla devuelve también el motivo en `error`. */
+async function consultarGoogle(fetchImpl, url) {
+  try {
+    const res = await fetchImpl(url);
+    if (res.ok) return { json: await res.json() };
+    const cuerpo = await Promise.resolve().then(() => res.json()).catch(() => null);
+    return { error: motivoFalloGoogle(res.status, cuerpo?.error?.message) };
+  } catch {
+    return { error: 'no hay conexión' };
+  }
+}
+
+/**
+ * Devuelve { libro, errorGoogle }. `libro` es { titulo, autor, anio, portada, fuente } o null si ninguna fuente lo conoce;
+ * `errorGoogle` explica por qué falló Google Books (o null si respondió o no hizo falta consultarlo).
+ */
 export async function buscarLibro(isbn, { fetch: fetchImpl = (...a) => globalThis.fetch(...a), claveGoogle = '' } = {}) {
   const [edicion, busqueda] = await Promise.all([
     json(fetchImpl, `${OPEN_LIBRARY}/isbn/${isbn}.json`),
     json(fetchImpl, `${OPEN_LIBRARY}/search.json?isbn=${isbn}&fields=title,author_name,first_publish_year,cover_i&limit=1`),
   ]);
   const ol = desdeOpenLibrary(edicion, busqueda);
-  if (ol?.autor && ol?.portada) return ol;
+  if (ol?.autor && ol?.portada) return { libro: ol, errorGoogle: null };
 
   const clave = claveGoogle ? `&key=${encodeURIComponent(claveGoogle)}` : '';
-  const gb = desdeGoogleBooks(await json(fetchImpl, `${GOOGLE_BOOKS}?q=isbn:${isbn}${clave}`));
-  return combinar(ol, gb);
+  const google = await consultarGoogle(fetchImpl, `${GOOGLE_BOOKS}?q=isbn:${isbn}${clave}`);
+  return { libro: combinar(ol, desdeGoogleBooks(google.json)), errorGoogle: google.error ?? null };
 }
