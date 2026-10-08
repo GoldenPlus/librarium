@@ -1,4 +1,4 @@
-// Escáner de códigos de barras con la cámara trasera (ZXing, cargado solo al usarlo). Pensado para Android.
+// Escáner de códigos de barras con la cámara trasera: lector nativo de Chrome en Android o, si no hay, ZXing (cargado solo al usarlo).
 
 import { isbnDeCodigo } from './isbn.js';
 
@@ -37,6 +37,10 @@ function mensajeCamara(error) {
   }
 }
 
+const errorDeCamara = (e) => {
+  throw new Error(mensajeCamara(e));
+};
+
 const pistaDe = (video) => video.srcObject?.getVideoTracks?.()[0];
 
 /** Rango de zoom de la cámara, o null si no lo admite. */
@@ -64,54 +68,108 @@ async function aplicarZoom(video, activar) {
   video.classList.toggle('ampliado', activar && !camara);
 }
 
+const CAMARA = { audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } };
+
+// Claves de DecodeHintType de ZXing, que el paquete para navegador no exporta.
+const PISTA_FORMATOS = 2;
+const PISTA_ESFORZARSE = 3;
+
+/** Lector de códigos del propio Chrome en Android (el de Google, más fiable que ZXing), o null si no hay. */
+async function detectorNativo() {
+  if (!('BarcodeDetector' in globalThis)) return null;
+  try {
+    const formatos = await globalThis.BarcodeDetector.getSupportedFormats();
+    return formatos.includes('ean_13') ? new globalThis.BarcodeDetector({ formats: ['ean_13'] }) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Busca códigos con el lector nativo cada 100 ms. Devuelve la función que lo para. */
+function leerConNativo(detector, video, alLeer) {
+  let activo = true;
+  (async () => {
+    while (activo) {
+      if (video.readyState >= 2) {
+        const codigos = await detector.detect(video).catch(() => []);
+        for (const codigo of codigos) if (activo) alLeer(codigo.rawValue);
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  })();
+  return () => (activo = false);
+}
+
+/** Respaldo con ZXing: solo EAN-13 y revisando todo el fotograma. Devuelve la función que lo para. */
+async function leerConZXing(ZX, stream, video, alLeer) {
+  const pistas = new Map([[PISTA_FORMATOS, [ZX.BarcodeFormat.EAN_13]], [PISTA_ESFORZARSE, true]]);
+  const lector = new ZX.BrowserMultiFormatOneDReader(pistas, { delayBetweenScanAttempts: 100 });
+  const controles = await lector.decodeFromStream(stream, video, (lectura) => lectura && alLeer(lectura.getText()));
+  return () => controles.stop();
+}
+
 /**
  * Empieza a leer códigos en `video`. `resultado` se resuelve con el ISBN-13 leído,
  * o con null si se llama a `detener` antes. `alIgnorar(codigo)` avisa de códigos que no son ISBN.
  * `lista` se resuelve cuando la cámara ya muestra imagen; `zoom(true | false)` lo pone en x2 o normal.
  */
 export function escanearIsbn(video, { alIgnorar } = {}) {
-  let controles = null;
-  let terminar = () => {};
+  let terminado = false;
+  let flujo = null;
+  let parar = () => {};
+  let resolverResultado = () => {};
   let avisarCamara = () => {};
   const camaraLista = new Promise((resolver) => (avisarCamara = resolver));
   delete video.dataset.zoomNormal;
   video.classList.remove('ampliado');
+
+  const apagar = () => {
+    parar();
+    flujo?.getTracks().forEach((pista) => pista.stop());
+    video.srcObject = null;
+  };
+  const terminar = (valor) => {
+    if (terminado) return;
+    terminado = true;
+    apagar();
+    resolverResultado(valor);
+  };
+  const alLeer = (texto) => {
+    if (terminado) return;
+    const isbn = isbnDeCodigo(texto);
+    if (isbn) terminar(isbn);
+    else alIgnorar?.(texto);
+  };
+
   const resultado = new Promise((resolver, rechazar) => {
-    let terminado = false;
-    terminar = (valor) => {
-      if (terminado) return;
-      terminado = true;
-      controles?.stop();
-      resolver(valor);
-    };
+    resolverResultado = resolver;
     if (!navigator.mediaDevices?.getUserMedia) {
       rechazar(new Error('Este navegador no permite usar la cámara aquí. Teclea el ISBN a mano.'));
       return;
     }
-    cargarZXing()
-      .then((ZX) => {
-        if (terminado) return null;
-        const lector = new ZX.BrowserMultiFormatOneDReader();
-        return lector
-          .decodeFromConstraints({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } }, video, (lectura) => {
-            if (!lectura || terminado) return;
-            const isbn = isbnDeCodigo(lectura.getText());
-            if (isbn) terminar(isbn);
-            else alIgnorar?.(lectura.getText());
-          })
-          .then((c) => {
-            controles = c;
-            if (terminado) c.stop();
-            else avisarCamara();
-          }, (e) => {
-            throw new Error(mensajeCamara(e));
-          });
-      })
-      .catch((e) => {
-        terminado = true;
-        rechazar(e);
-      });
+    (async () => {
+      const detector = await detectorNativo();
+      const ZX = detector ? null : await cargarZXing();
+      const nuevo = await navigator.mediaDevices.getUserMedia(CAMARA).catch(errorDeCamara);
+      if (terminado) return nuevo.getTracks().forEach((pista) => pista.stop());
+      flujo = nuevo;
+      if (detector) {
+        video.srcObject = flujo;
+        await video.play().catch(errorDeCamara);
+        parar = leerConNativo(detector, video, alLeer);
+      } else {
+        parar = await leerConZXing(ZX, flujo, video, alLeer).catch(errorDeCamara);
+      }
+      if (terminado) return apagar();
+      avisarCamara();
+    })().catch((e) => {
+      if (terminado) return;
+      terminado = true;
+      apagar();
+      rechazar(e);
+    });
   });
+
   return {
     resultado,
     detener: () => terminar(null),
