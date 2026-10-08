@@ -163,8 +163,11 @@ function yaTenemos(isbn) {
   return null;
 }
 
-/** Valida el ISBN, avisa si ya lo tenéis y rellena el formulario con los datos que se encuentren. */
-async function procesarIsbn(texto) {
+/**
+ * Valida el ISBN, avisa si ya lo tenéis y rellena el formulario con los datos que se encuentren.
+ * Con `enfocar: false` (al venir del escáner) no pone el foco en ningún campo, para que no salga el teclado.
+ */
+async function procesarIsbn(texto, { enfocar = true } = {}) {
   const f = form();
   limpiarMensajes();
   const isbn = normalizarIsbn(texto);
@@ -188,7 +191,7 @@ async function procesarIsbn(texto) {
 
   if (!datos) {
     estadoIsbn('No hay datos de este ISBN en Open Library ni Google Books. Rellena el resto a mano; el ISBN se guarda igual.');
-    f.titulo.focus();
+    if (enfocar) f.titulo.focus();
     return;
   }
   if (datos.titulo) f.titulo.value = datos.titulo;
@@ -196,7 +199,7 @@ async function procesarIsbn(texto) {
   if (datos.anio) f.anio.value = datos.anio;
   ponerPortada(datos.portada);
   estadoIsbn(`Datos de ${datos.fuente}. Revísalos, elige la ubicación y guarda.`);
-  f.ubicacion.focus();
+  if (enfocar) f.ubicacion.focus();
 }
 
 let escaneo = null;
@@ -237,13 +240,12 @@ export async function abrirEscaner() {
     cerrarEscaner();
     if (isbn) {
       navigator.vibrate?.(80);
-      await procesarIsbn(isbn);
+      await procesarIsbn(isbn, { enfocar: false });
     }
   } catch (e) {
     escaneo = null;
     $('#dlg-escaner').close();
     estadoIsbn(e.message, true);
-    form().isbn.focus();
   }
 }
 

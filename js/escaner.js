@@ -1,4 +1,4 @@
-// Escáner de códigos de barras con la cámara trasera: lector nativo de Chrome en Android o, si no hay, ZXing (cargado solo al usarlo).
+// Escáner de códigos de barras con la cámara trasera (ZXing, cargado solo al usarlo). Pensado para Android.
 
 import { isbnDeCodigo } from './isbn.js';
 
@@ -74,42 +74,13 @@ const CAMARA = { audio: false, video: { facingMode: { ideal: 'environment' }, wi
 const PISTA_FORMATOS = 2;
 const PISTA_ESFORZARSE = 3;
 
-/** Lector de códigos del propio Chrome en Android (el de Google, más fiable que ZXing), o null si no hay. */
-async function detectorNativo() {
-  if (!('BarcodeDetector' in globalThis)) return null;
-  try {
-    const formatos = await globalThis.BarcodeDetector.getSupportedFormats();
-    return formatos.includes('ean_13') ? new globalThis.BarcodeDetector({ formats: ['ean_13'] }) : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Busca códigos con el lector nativo cada 100 ms. Devuelve la función que lo para.
- * Analiza una copia del fotograma en un lienzo: pasarle el <video> directamente lo deja en negro en algunos Android.
+ * Lee con ZXing: solo EAN-13 y revisando todas las líneas del fotograma. Devuelve la función que lo para.
+ * Con «esforzarse», ZXing también prueba la imagen girada, pero girar falla en el navegador
+ * («Could not create a Canvas element») y el error apaga la cámara; por eso se desactiva el giro.
  */
-function leerConNativo(detector, video, alLeer) {
-  let activo = true;
-  const lienzo = document.createElement('canvas');
-  const contexto = lienzo.getContext('2d');
-  (async () => {
-    while (activo) {
-      if (video.readyState >= 2 && video.videoWidth) {
-        if (lienzo.width !== video.videoWidth) lienzo.width = video.videoWidth;
-        if (lienzo.height !== video.videoHeight) lienzo.height = video.videoHeight;
-        contexto.drawImage(video, 0, 0);
-        const codigos = await detector.detect(lienzo).catch(() => []);
-        for (const codigo of codigos) if (activo) alLeer(codigo.rawValue);
-      }
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  })();
-  return () => (activo = false);
-}
-
-/** Respaldo con ZXing: solo EAN-13 y revisando todo el fotograma. Devuelve la función que lo para. */
 async function leerConZXing(ZX, stream, video, alLeer) {
+  ZX.HTMLCanvasElementLuminanceSource.prototype.isRotateSupported = () => false;
   const pistas = new Map([[PISTA_FORMATOS, [ZX.BarcodeFormat.EAN_13]], [PISTA_ESFORZARSE, true]]);
   const lector = new ZX.BrowserMultiFormatOneDReader(pistas, { delayBetweenScanAttempts: 100 });
   const controles = await lector.decodeFromStream(stream, video, (lectura) => lectura && alLeer(lectura.getText()));
@@ -156,18 +127,11 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
       return;
     }
     (async () => {
-      const detector = await detectorNativo();
-      const ZX = detector ? null : await cargarZXing();
+      const ZX = await cargarZXing();
       const nuevo = await navigator.mediaDevices.getUserMedia(CAMARA).catch(errorDeCamara);
       if (terminado) return nuevo.getTracks().forEach((pista) => pista.stop());
       flujo = nuevo;
-      if (detector) {
-        video.srcObject = flujo;
-        await video.play().catch(errorDeCamara);
-        parar = leerConNativo(detector, video, alLeer);
-      } else {
-        parar = await leerConZXing(ZX, flujo, video, alLeer).catch(errorDeCamara);
-      }
+      parar = await leerConZXing(ZX, flujo, video, alLeer).catch(errorDeCamara);
       if (terminado) return apagar();
       avisarCamara();
     })().catch((e) => {
