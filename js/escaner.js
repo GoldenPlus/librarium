@@ -45,20 +45,29 @@ function rangoZoom(video) {
   return zoom?.max > zoom?.min ? zoom : null;
 }
 
-/** Zoom x2 real de la cámara (Chrome en Android), respecto al zoom con el que arrancó. */
-async function aplicarZoom(video, activar) {
+/** Zoom x2 real de la cámara (Chrome en Android), respecto al zoom con el que arrancó. Devuelve false si no se pudo. */
+async function zoomCamara(video, activar) {
   const zoom = rangoZoom(video);
-  if (!zoom) return;
+  if (!zoom) return false;
   const pista = pistaDe(video);
   video.dataset.zoomNormal ??= String(pista.getSettings().zoom ?? zoom.min);
   const normal = Number(video.dataset.zoomNormal);
-  await pista.applyConstraints({ advanced: [{ zoom: activar ? Math.min(normal * 2, zoom.max) : normal }] }).catch(() => {});
+  return pista.applyConstraints({ advanced: [{ zoom: activar ? Math.min(normal * 2, zoom.max) : normal }] }).then(() => true, () => false);
+}
+
+/**
+ * Zoom x2 solo dentro del visor: el de la cámara si lo tiene; si no, se amplía la imagen del vídeo
+ * (el lector sigue analizando el fotograma completo, así que el código se lee igual).
+ */
+async function aplicarZoom(video, activar) {
+  const camara = await zoomCamara(video, activar);
+  video.classList.toggle('ampliado', activar && !camara);
 }
 
 /**
  * Empieza a leer códigos en `video`. `resultado` se resuelve con el ISBN-13 leído,
  * o con null si se llama a `detener` antes. `alIgnorar(codigo)` avisa de códigos que no son ISBN.
- * `admiteZoom` se resuelve con true si la cámara tiene zoom; `zoom(true | false)` lo pone en x2 o normal.
+ * `lista` se resuelve cuando la cámara ya muestra imagen; `zoom(true | false)` lo pone en x2 o normal.
  */
 export function escanearIsbn(video, { alIgnorar } = {}) {
   let controles = null;
@@ -66,6 +75,7 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
   let avisarCamara = () => {};
   const camaraLista = new Promise((resolver) => (avisarCamara = resolver));
   delete video.dataset.zoomNormal;
+  video.classList.remove('ampliado');
   const resultado = new Promise((resolver, rechazar) => {
     let terminado = false;
     terminar = (valor) => {
@@ -105,7 +115,7 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
   return {
     resultado,
     detener: () => terminar(null),
-    admiteZoom: camaraLista.then(() => Boolean(rangoZoom(video))),
+    lista: camaraLista,
     zoom: (activar) => camaraLista.then(() => aplicarZoom(video, activar)),
   };
 }

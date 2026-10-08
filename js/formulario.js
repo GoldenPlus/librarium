@@ -207,7 +207,7 @@ function cerrarEscaner() {
   if ($('#dlg-escaner').open) $('#dlg-escaner').close();
 }
 
-/** Con zoom normal solo se ve «+»; con zoom x2, solo «−». null: ninguno (la cámara no tiene zoom o aún no está lista). */
+/** Con zoom normal solo se ve «+»; con zoom x2, solo «−». null: ninguno (la cámara aún no está lista). */
 function mostrarZoom(ampliado) {
   $('#escaner-zoom-mas').hidden = ampliado !== false;
   $('#escaner-zoom-menos').hidden = ampliado !== true;
@@ -226,8 +226,8 @@ export async function abrirEscaner() {
   const actual = (escaneo = escanearIsbn($('#video-escaner'), {
     alIgnorar: (codigo) => (estado.textContent = `El código ${codigo} no es un ISBN. Busca el código que empieza por 978 o 979.`),
   }));
-  actual.admiteZoom.then((admite) => {
-    if (admite && escaneo === actual) mostrarZoom(false);
+  actual.lista.then(() => {
+    if (escaneo === actual) mostrarZoom(false);
   });
   setTimeout(() => {
     if (escaneo && estado.textContent === 'Abriendo la cámara…') estado.textContent = 'Apunta al código de barras del libro.';
