@@ -86,3 +86,22 @@ test('motivo del fallo de Google Books', () => {
   assert.equal(motivoFalloGoogle(403, "Quota exceeded for quota metric 'Queries'"), 'se ha agotado la cuota diaria de consultas');
   assert.equal(motivoFalloGoogle(500), 'error 500');
 });
+
+test('si «isbn:» no lo encuentra, se busca el número suelto y solo vale un resultado con ese ISBN', async () => {
+  const pedidas = [];
+  const conIsbn = { items: [
+    { volumeInfo: { title: 'Otro libro', industryIdentifiers: [{ type: 'ISBN_13', identifier: '9780306406157' }] } },
+    { volumeInfo: { title: 'Morte', authors: ['Autor'], industryIdentifiers: [{ type: 'ISBN_10', identifier: '8499954634' }] } },
+  ] };
+  const fetch = async (url) => {
+    pedidas.push(url);
+    if (url.includes('openlibrary')) return { ok: false, status: 404 };
+    const cuerpo = url.includes('q=isbn:') ? { totalItems: 0 } : conIsbn;
+    return { ok: true, status: 200, json: async () => cuerpo };
+  };
+  const { libro, errorGoogle } = await buscarLibro('9788499954639', { fetch, claveGoogle: 'abc' });
+  assert.equal(errorGoogle, null);
+  assert.equal(libro.titulo, 'Morte');
+  assert.ok(pedidas.some((u) => u.endsWith('?q=9788499954639&key=abc')));
+  assert.equal(desdeGoogleBooks({ items: conIsbn.items.slice(0, 1) }, '9788499954639'), null, 'un resultado sin ese ISBN no vale');
+});

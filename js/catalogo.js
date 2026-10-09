@@ -1,5 +1,7 @@
 // Datos de libros por ISBN: Open Library y, si falta algo, Google Books.
 
+import { normalizarIsbn } from './isbn.js';
+
 const OPEN_LIBRARY = 'https://openlibrary.org';
 const GOOGLE_BOOKS = 'https://www.googleapis.com/books/v1/volumes';
 
@@ -28,8 +30,11 @@ export function desdeOpenLibrary(edicion, busqueda) {
   };
 }
 
-export function desdeGoogleBooks(json) {
-  const info = json?.items?.[0]?.volumeInfo;
+/** Si se pasa `isbn`, solo vale un resultado que tenga ese ISBN (en 13 o en 10 cifras) entre sus identificadores. */
+export function desdeGoogleBooks(json, isbn = null) {
+  const tieneIsbn = (item) => item.volumeInfo?.industryIdentifiers?.some((id) => normalizarIsbn(id.identifier) === isbn);
+  const items = json?.items ?? [];
+  const info = (isbn ? items.find(tieneIsbn) : items[0])?.volumeInfo;
   if (!info?.title) return null;
   const imagen = info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail ?? '';
   return {
@@ -94,5 +99,13 @@ export async function buscarLibro(isbn, { fetch: fetchImpl = (...a) => globalThi
 
   const clave = claveGoogle ? `&key=${encodeURIComponent(claveGoogle)}` : '';
   const google = await consultarGoogle(fetchImpl, `${GOOGLE_BOOKS}?q=isbn:${isbn}${clave}`);
-  return { libro: combinar(ol, desdeGoogleBooks(google.json)), errorGoogle: google.error ?? null };
+  let deGoogle = desdeGoogleBooks(google.json);
+  if (google.error) return { libro: ol, errorGoogle: google.error };
+  if (!deGoogle) {
+    // Algunos libros están mal indexados y «isbn:» no los encuentra, pero buscando el número suelto sí.
+    const suelto = await consultarGoogle(fetchImpl, `${GOOGLE_BOOKS}?q=${isbn}${clave}`);
+    if (suelto.error) return { libro: ol, errorGoogle: suelto.error };
+    deGoogle = desdeGoogleBooks(suelto.json, isbn);
+  }
+  return { libro: combinar(ol, deGoogle), errorGoogle: null };
 }
