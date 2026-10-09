@@ -77,7 +77,7 @@ const PISTA_ESFORZARSE = 3;
 const FALLOS_NORMALES = new Set(['NotFoundException', 'ChecksumException', 'FormatException']);
 
 /**
- * Cada intento analiza el fotograma de una forma distinta, por turnos. Con más brillo y contraste las barras
+ * Cada intento de ZXing analiza el fotograma de una forma distinta, por turnos. Con más brillo y contraste las barras
  * engordadas por la tinta se afinan y se leen mucho mejor; la variante sin filtro queda para los códigos claros o apagados.
  */
 const VARIANTES = [
@@ -85,14 +85,26 @@ const VARIANTES = [
   { escala: 0.75, filtro: 'brightness(1.25) contrast(1.4)' },
   { escala: 1, filtro: 'none' },
 ];
+const SIN_FILTRO = { escala: 1, filtro: 'none' };
+
+/** Lector de códigos del propio Chrome en Android (el de Google, mucho mejor con barras borrosas), o null si no hay. */
+async function detectorNativo() {
+  if (!('BarcodeDetector' in globalThis)) return null;
+  try {
+    const formatos = await globalThis.BarcodeDetector.getSupportedFormats();
+    return formatos.includes('ean_13') ? new globalThis.BarcodeDetector({ formats: ['ean_13'] }) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
- * Busca códigos con ZXing cada 100 ms en una copia del fotograma: solo EAN-13 y revisando todas sus líneas.
- * Devuelve la función que lo para. `alFallar(error)` avisa si ZXing falla de verdad.
+ * Busca códigos cada 100 ms en una copia del fotograma, alternando el lector nativo (si lo hay) con ZXing.
+ * ZXing busca solo EAN-13 revisando todas sus líneas. Devuelve la función que lo para. `alFallar(error)` avisa si ZXing falla de verdad.
  * Con «esforzarse», ZXing también prueba la imagen girada, pero girar falla en el navegador
  * («Could not create a Canvas element»); por eso se desactiva el giro.
  */
-function leerConZXing(ZX, video, alLeer, alFallar) {
+function leerCodigos(ZX, nativo, video, alLeer, alFallar) {
   ZX.HTMLCanvasElementLuminanceSource.prototype.isRotateSupported = () => false;
   const lector = new ZX.BrowserMultiFormatOneDReader(new Map([[PISTA_FORMATOS, [ZX.BarcodeFormat.EAN_13]], [PISTA_ESFORZARSE, true]]));
   const lienzo = document.createElement('canvas');
@@ -100,23 +112,39 @@ function leerConZXing(ZX, video, alLeer, alFallar) {
   let activo = true;
   let intento = 0;
   let temporizador;
-  const paso = () => {
+  const copiar = ({ escala, filtro }) => {
+    const ancho = Math.round(video.videoWidth * escala);
+    const alto = Math.round(video.videoHeight * escala);
+    if (lienzo.width !== ancho) lienzo.width = ancho;
+    if (lienzo.height !== alto) lienzo.height = alto;
+    contexto.filter = filtro;
+    contexto.drawImage(video, 0, 0, ancho, alto);
+  };
+  const leerZXing = () => {
+    copiar(VARIANTES[intento % VARIANTES.length]);
+    try {
+      alLeer(lector.decodeFromCanvas(lienzo).getText());
+    } catch (e) {
+      if (!FALLOS_NORMALES.has(e?.getKind?.())) throw e;
+    }
+  };
+  const leerNativo = async () => {
+    copiar(SIN_FILTRO);
+    const codigos = await nativo.detect(lienzo).catch(() => []);
+    for (const codigo of codigos) if (activo) alLeer(codigo.rawValue);
+  };
+  const paso = async () => {
     if (!activo) return;
     if (video.readyState >= 2 && video.videoWidth) {
-      const { escala, filtro } = VARIANTES[intento++ % VARIANTES.length];
-      const ancho = Math.round(video.videoWidth * escala);
-      const alto = Math.round(video.videoHeight * escala);
-      if (lienzo.width !== ancho) lienzo.width = ancho;
-      if (lienzo.height !== alto) lienzo.height = alto;
-      contexto.filter = filtro;
-      contexto.drawImage(video, 0, 0, ancho, alto);
       try {
-        alLeer(lector.decodeFromCanvas(lienzo).getText());
+        if (nativo && intento % 2 === 0) await leerNativo();
+        else leerZXing();
       } catch (e) {
-        if (!FALLOS_NORMALES.has(e?.getKind?.())) return alFallar(e);
+        return alFallar(e);
       }
+      intento++;
     }
-    temporizador = setTimeout(paso, 100);
+    if (activo) temporizador = setTimeout(paso, 100);
   };
   paso();
   return () => {
@@ -158,8 +186,13 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
     apagar();
     rechazarResultado(e);
   };
+  // Un código solo cuenta si sale igual dos veces: ZXing a veces lee mal unas barras borrosas y el resultado aún cuadra con el dígito de control.
+  let anterior = null;
   const alLeer = (texto) => {
     if (terminado) return;
+    const confirmado = texto === anterior;
+    anterior = texto;
+    if (!confirmado) return;
     const isbn = isbnDeCodigo(texto);
     if (isbn) terminar(isbn);
     else alIgnorar?.(texto);
@@ -173,13 +206,13 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
       return;
     }
     (async () => {
-      const ZX = await cargarZXing();
+      const [ZX, nativo] = await Promise.all([cargarZXing(), detectorNativo()]);
       const nuevo = await navigator.mediaDevices.getUserMedia(CAMARA).catch(errorDeCamara);
       if (terminado) return nuevo.getTracks().forEach((pista) => pista.stop());
       flujo = nuevo;
       video.srcObject = flujo;
       await video.play().catch(errorDeCamara);
-      parar = leerConZXing(ZX, video, alLeer, (error) =>
+      parar = leerCodigos(ZX, nativo, video, alLeer, (error) =>
         fallar(new Error(`El lector de códigos se ha detenido (${error.message || error.name}). Cierra y vuelve a abrir la cámara, o teclea el ISBN.`)),
       );
       if (terminado) return apagar();
@@ -193,4 +226,36 @@ export function escanearIsbn(video, { alIgnorar } = {}) {
     lista: camaraLista,
     zoom: (activar) => camaraLista.then(() => aplicarZoom(video, activar)),
   };
+}
+
+// ---------- Diagnóstico (solo con ?diagnostico en la dirección)
+
+/** Qué cámara y qué lector tiene el navegador, para saber por qué un código no se lee. */
+export async function datosCamara(video) {
+  const pista = pistaDe(video);
+  const ajustes = pista?.getSettings?.() ?? {};
+  const capacidades = pista?.getCapabilities?.() ?? {};
+  let nativo = 'no';
+  if ('BarcodeDetector' in globalThis) {
+    const formatos = await globalThis.BarcodeDetector.getSupportedFormats().catch(() => []);
+    nativo = formatos.includes('ean_13') ? 'sí, con EAN-13' : `sin EAN-13 (${formatos.join(', ') || 'ningún formato'})`;
+  }
+  return [
+    `Imagen ${video.videoWidth}×${video.videoHeight}`,
+    `enfoque ${ajustes.focusMode ?? '?'} (admite ${capacidades.focusMode?.join(', ') || '?'})`,
+    `zoom ${ajustes.zoom ?? 'no'}`,
+    `lector nativo: ${nativo}`,
+  ].join(' · ');
+}
+
+/** Descarga el fotograma actual tal cual llega de la cámara, en PNG. */
+export function guardarFotograma(video) {
+  const lienzo = document.createElement('canvas');
+  lienzo.width = video.videoWidth;
+  lienzo.height = video.videoHeight;
+  lienzo.getContext('2d').drawImage(video, 0, 0);
+  const enlace = document.createElement('a');
+  enlace.href = lienzo.toDataURL('image/png');
+  enlace.download = `fotograma-${Date.now()}.png`;
+  enlace.click();
 }

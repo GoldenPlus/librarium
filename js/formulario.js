@@ -5,7 +5,7 @@ import { comprobarEdicion, prepararAlta, DuplicadoError, ParecidoError, SerieExi
 import { leerCamposSaga, asegurarSaga, idSaga } from './sagas.js';
 import { normalizarIsbn } from './isbn.js';
 import { buscarLibro } from './catalogo.js';
-import { escanearIsbn } from './escaner.js';
+import { datosCamara, escanearIsbn, guardarFotograma } from './escaner.js';
 import { crearTmdb } from './tmdb.js';
 import { app, claveDe, sagaDe } from './estado.js';
 import { $, el, aviso } from './dom.js';
@@ -225,6 +225,20 @@ function cambiarZoom(ampliado) {
   escaneo?.zoom(ampliado);
 }
 
+// Con ?diagnostico en la dirección, el escáner muestra datos de la cámara y deja guardar el fotograma que analiza.
+const DIAGNOSTICO = new URLSearchParams(location.search).has('diagnostico');
+
+async function mostrarDiagnostico(actual) {
+  const nodo = $('#escaner-diagnostico');
+  $('#escaner-fotograma').hidden = false;
+  nodo.hidden = false;
+  // La resolución tarda un poco en asentarse: se actualiza mientras el escáner siga abierto.
+  while (escaneo === actual) {
+    nodo.textContent = await datosCamara($('#video-escaner'));
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
 export async function abrirEscaner() {
   const estado = $('#escaner-estado');
   estado.textContent = 'Abriendo la cámara…';
@@ -236,7 +250,9 @@ export async function abrirEscaner() {
     alIgnorar: (codigo) => (estado.textContent = `El código ${codigo} no es un ISBN. Busca el código que empieza por 978 o 979.`),
   }));
   actual.lista.then(() => {
-    if (escaneo === actual) mostrarZoom(false);
+    if (escaneo !== actual) return;
+    mostrarZoom(false);
+    if (DIAGNOSTICO) mostrarDiagnostico(actual);
   });
   setTimeout(() => {
     if (escaneo && estado.textContent === 'Abriendo la cámara…') estado.textContent = 'Apunta al código de barras del libro.';
@@ -562,6 +578,7 @@ export function iniciarFormulario({ despuesDeGuardar }) {
     estadoIsbn('');
   });
   $('#escaner-cancelar').addEventListener('click', cerrarEscaner);
+  $('#escaner-fotograma').addEventListener('click', () => guardarFotograma($('#video-escaner')));
   $('#escaner-zoom-mas').addEventListener('click', () => cambiarZoom(true));
   $('#escaner-zoom-menos').addEventListener('click', () => cambiarZoom(false));
   $('#dlg-escaner').addEventListener('cancel', (e) => {
