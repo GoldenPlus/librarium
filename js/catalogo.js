@@ -1,4 +1,4 @@
-// Datos de libros por ISBN: Open Library y, si falta algo, Google Books.
+// Datos de libros por ISBN (Open Library y, si falta algo, Google Books) y búsqueda por título.
 
 import { normalizarIsbn } from './isbn.js';
 
@@ -108,4 +108,44 @@ export async function buscarLibro(isbn, { fetch: fetchImpl = (...a) => globalThi
     deGoogle = desdeGoogleBooks(suelto.json, isbn);
   }
   return { libro: combinar(ol, deGoogle), errorGoogle: null };
+}
+
+// ---------- Búsqueda por título, cuando no hay ISBN
+
+/**
+ * Resultados de Google Books como fichas para elegir: { titulo, autor, anio, portada, fuente }.
+ * Sin ISBN: por título no se sabe qué edición tenéis, y un ISBN equivocado acabaría siendo el identificador.
+ */
+export function resultadosGoogle(json) {
+  return (json?.items ?? []).map((item) => desdeGoogleBooks({ items: [item] })).filter(Boolean);
+}
+
+/** Resultados de /search.json de Open Library con el mismo formato. */
+export function resultadosOpenLibrary(json) {
+  return (json?.docs ?? [])
+    .filter((doc) => doc.title)
+    .map((doc) => ({
+      titulo: doc.title,
+      autor: nombres(doc.author_name),
+      anio: doc.first_publish_year ?? null,
+      portada: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : '',
+      fuente: 'Open Library',
+    }));
+}
+
+/**
+ * Busca libros por título (y autor, si se da). Devuelve { resultados, errorGoogle }:
+ * primero Google Books, que conoce mejor las ediciones en español; si no da nada, Open Library.
+ */
+export async function buscarPorTitulo(titulo, { autor = '', fetch: fetchImpl = (...a) => globalThis.fetch(...a), claveGoogle = '' } = {}) {
+  const consulta = [`intitle:${titulo}`, autor && `inauthor:${autor}`].filter(Boolean).join(' ');
+  const clave = claveGoogle ? `&key=${encodeURIComponent(claveGoogle)}` : '';
+  const google = await consultarGoogle(fetchImpl, `${GOOGLE_BOOKS}?q=${encodeURIComponent(consulta)}&printType=books&maxResults=10${clave}`);
+  const deGoogle = resultadosGoogle(google.json);
+  if (deGoogle.length) return { resultados: deGoogle, errorGoogle: null };
+
+  const parametros = new URLSearchParams({ title: titulo, fields: 'title,author_name,first_publish_year,cover_i', limit: '10' });
+  if (autor) parametros.set('author', autor);
+  const ol = await json(fetchImpl, `${OPEN_LIBRARY}/search.json?${parametros}`);
+  return { resultados: resultadosOpenLibrary(ol), errorGoogle: google.error ?? null };
 }

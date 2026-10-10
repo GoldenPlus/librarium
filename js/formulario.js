@@ -4,7 +4,7 @@ import { TIPOS, TIPO, construirItem, editarItem, sinCambios, aplicarCambios, ana
 import { comprobarEdicion, prepararAlta, DuplicadoError, ParecidoError, SerieExistenteError } from './duplicados.js';
 import { leerCamposSaga, asegurarSaga, idSaga } from './sagas.js';
 import { normalizarIsbn } from './isbn.js';
-import { buscarLibro } from './catalogo.js';
+import { buscarLibro, buscarPorTitulo } from './catalogo.js';
 import { datosCamara, escanearIsbn, guardarFotograma } from './escaner.js';
 import { crearTmdb } from './tmdb.js';
 import { app, claveDe, sagaDe } from './estado.js';
@@ -175,6 +175,18 @@ function anadirFilaTemporada() {
   $('#filas-temporadas').append(filaTemporada({ num: siguiente, formato: ultima.formato, ubicacion: ultima.ubicacion }));
 }
 
+/** Un resultado de búsqueda (libro o TMDB) para elegir. */
+function filaResultado({ miniatura, icono, titulo, detalle, alElegir }) {
+  return el('li', {},
+    el('button', { type: 'button', class: 'resultado', onclick: alElegir },
+      miniatura
+        ? el('img', { src: miniatura, alt: '', loading: 'lazy', onerror: (e) => (e.currentTarget.style.visibility = 'hidden') })
+        : el('span', { class: 'sin-imagen', 'aria-hidden': 'true' }, icono),
+      el('span', {}, el('strong', {}, titulo), el('small', {}, detalle)),
+    ),
+  );
+}
+
 // ---------- ISBN: escáner y datos automáticos
 
 function estadoIsbn(texto, esError = false) {
@@ -210,6 +222,7 @@ function yaTenemos(isbn) {
 async function procesarIsbn(texto, { enfocar = true } = {}) {
   const f = form();
   limpiarMensajes();
+  $('#isbn-resultados').replaceChildren();
   const isbn = normalizarIsbn(texto);
   if (!isbn) return estadoIsbn('No es un ISBN válido. Revisa los dígitos.', true);
   f.isbn.value = isbn;
@@ -244,6 +257,47 @@ async function procesarIsbn(texto, { enfocar = true } = {}) {
   ponerPortada(datos.portada);
   estadoIsbn(`Datos de ${datos.fuente}. Revísalos, elige la ubicación y guarda.`);
   if (enfocar) f.ubicacion.focus();
+}
+
+/** Sin ISBN, «Buscar» busca por el título (y el autor, si está escrito) y deja elegir entre los resultados. */
+async function buscarTitulo() {
+  const f = form();
+  limpiarMensajes();
+  $('#isbn-resultados').replaceChildren();
+  const titulo = f.titulo.value.trim();
+  if (!titulo) return estadoIsbn('Escribe un ISBN o, si no lo tiene, el título del libro, y pulsa Buscar.', true);
+  if (!navigator.onLine) return estadoIsbn('Sin conexión: rellena los datos a mano.');
+
+  estadoIsbn(`Buscando «${titulo}»…`);
+  const boton = $('#btn-buscar-isbn');
+  boton.disabled = true;
+  const { resultados, errorGoogle } = await buscarPorTitulo(titulo, { autor: conAutor(tipoActual()) ? f.autor.value.trim() : '', claveGoogle: claveDe('google') });
+  boton.disabled = false;
+  if (f.titulo.value.trim() !== titulo || f.isbn.value.trim()) return; // Se cambió mientras tanto.
+
+  if (!resultados.length) {
+    return estadoIsbn(
+      errorGoogle
+        ? `Open Library no encuentra ese título y Google Books no ha respondido: ${errorGoogle}. Rellena el resto a mano.`
+        : 'No se encuentra ningún libro con ese título. Rellena el resto a mano.',
+    );
+  }
+  estadoIsbn('Elige el correcto:');
+  $('#isbn-resultados').replaceChildren(
+    ...resultados.slice(0, 8).map((r) =>
+      filaResultado({ miniatura: r.portada, icono: '📖', titulo: r.titulo, detalle: [r.autor, r.anio].filter(Boolean).join(' · '), alElegir: () => elegirLibro(r) }),
+    ),
+  );
+}
+
+function elegirLibro(libro) {
+  const f = form();
+  $('#isbn-resultados').replaceChildren();
+  f.titulo.value = libro.titulo;
+  if (libro.autor) f.autor.value = libro.autor;
+  f.anio.value = libro.anio ?? '';
+  ponerPortada(libro.portada);
+  estadoIsbn(`Datos de ${libro.fuente}. Revísalos, elige la ubicación y guarda.`);
 }
 
 let escaneo = null;
@@ -347,14 +401,13 @@ async function buscarTmdb() {
     estadoTmdb(resultados.length ? 'Elige el correcto:' : 'TMDB no encuentra nada con ese título.');
     $('#tmdb-resultados').replaceChildren(
       ...resultados.slice(0, 8).map((r) =>
-        el('li', {},
-          el('button', { type: 'button', class: 'resultado', onclick: () => elegirTmdb(r) },
-            r.miniatura
-              ? el('img', { src: r.miniatura, alt: '', loading: 'lazy', onerror: (e) => (e.currentTarget.style.visibility = 'hidden') })
-              : el('span', { class: 'sin-imagen', 'aria-hidden': 'true' }, '🎬'),
-            el('span', {}, el('strong', {}, r.titulo), el('small', {}, [r.documental ? 'Documental' : NOMBRE_MEDIA[r.media], r.anio].filter(Boolean).join(' · '))),
-          ),
-        ),
+        filaResultado({
+          miniatura: r.miniatura,
+          icono: '🎬',
+          titulo: r.titulo,
+          detalle: [r.documental ? 'Documental' : NOMBRE_MEDIA[r.media], r.anio].filter(Boolean).join(' · '),
+          alElegir: () => elegirTmdb(r),
+        }),
       ),
     );
   } catch (e) {
@@ -425,6 +478,7 @@ export function abrirAlta(tipoPorDefecto) {
   limpiarTmdb();
   ponerPortada('');
   estadoIsbn('');
+  $('#isbn-resultados').replaceChildren();
   limpiarMensajes();
   ajustar();
   $('#dlg-alta').showModal();
@@ -608,17 +662,19 @@ export function iniciarFormulario({ despuesDeGuardar }) {
     const total = Number(f.temporadas_total.value);
     if (total > 0) f.temporadas.value = total === 1 ? '1' : `1-${total}`;
   });
-  $('#btn-buscar-isbn').addEventListener('click', () => procesarIsbn(f.isbn.value));
+  const buscarLibroOTitulo = () => (f.isbn.value.trim() ? procesarIsbn(f.isbn.value) : buscarTitulo());
+  $('#btn-buscar-isbn').addEventListener('click', buscarLibroOTitulo);
   $('#btn-escanear').addEventListener('click', abrirEscaner);
   f.isbn.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    procesarIsbn(f.isbn.value);
+    buscarLibroOTitulo();
   });
   // Un ISBN distinto invalida la portada y los mensajes del anterior.
   f.isbn.addEventListener('input', () => {
     ponerPortada('');
     estadoIsbn('');
+    $('#isbn-resultados').replaceChildren();
   });
   $('#escaner-cancelar').addEventListener('click', cerrarEscaner);
   $('#escaner-fotograma').addEventListener('click', () => guardarFotograma($('#video-escaner')));

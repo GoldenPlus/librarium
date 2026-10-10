@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buscarLibro, desdeOpenLibrary, desdeGoogleBooks, motivoFalloGoogle } from '../js/catalogo.js';
+import { buscarLibro, buscarPorTitulo, desdeOpenLibrary, desdeGoogleBooks, motivoFalloGoogle } from '../js/catalogo.js';
 import { isbnDeCodigo } from '../js/isbn.js';
 
 // Respuestas reales recortadas (Open Library, sep 2026).
@@ -104,4 +104,21 @@ test('si «isbn:» no lo encuentra, se busca el número suelto y solo vale un re
   assert.equal(libro.titulo, 'Morte');
   assert.ok(pedidas.some((u) => u.endsWith('?q=9788499954639&key=abc')));
   assert.equal(desdeGoogleBooks({ items: conIsbn.items.slice(0, 1) }, '9788499954639'), null, 'un resultado sin ese ISBN no vale');
+});
+
+test('por título: Google Books primero, con autor si lo hay', async () => {
+  const f = fetchFalso({ googleapis: google });
+  const { resultados, errorGoogle } = await buscarPorTitulo('Escrito en el agua', { autor: 'Hawkins', fetch: f.fetch });
+  assert.equal(errorGoogle, null);
+  assert.deepEqual(resultados.map((r) => r.titulo), ['Escrito en el agua']);
+  assert.ok(f.pedidas[0].includes(encodeURIComponent('intitle:Escrito en el agua inauthor:Hawkins')));
+  assert.ok(!f.pedidas.some((u) => u.includes('openlibrary')));
+});
+
+test('por título: sin nada en Google Books se usa Open Library, y se avisa si Google falló', async () => {
+  const f = fetchFalso({ googleapis: 429, 'search.json': busqueda });
+  const { resultados, errorGoogle } = await buscarPorTitulo('Podróże', { fetch: f.fetch });
+  assert.equal(resultados[0].autor, 'Ryszard Kapuściński');
+  assert.equal(resultados[0].fuente, 'Open Library');
+  assert.equal(errorGoogle, 'se ha agotado la cuota diaria de consultas');
 });

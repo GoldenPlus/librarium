@@ -6,18 +6,18 @@
   <meta name="theme-color" content="#7a3e1d">
   <title>Librarium</title>
   <!-- versiones: generado por npm run versionar -->
-  <link rel="stylesheet" href="css/app.css?v=46d09c5641">
+  <link rel="stylesheet" href="css/app.css?v=cf6126b33d">
   <script type="importmap">
   { "imports": {
       "./js/almacen.js": "./js/almacen.js?v=ce0367fb1e",
       "./js/busqueda.js": "./js/busqueda.js?v=549dec5141",
-      "./js/catalogo.js": "./js/catalogo.js?v=5fafb6c845",
+      "./js/catalogo.js": "./js/catalogo.js?v=d49e7e4f5a",
       "./js/config.js": "./js/config.js?v=1ad515635e",
       "./js/dom.js": "./js/dom.js?v=e0bdbcdd70",
       "./js/duplicados.js": "./js/duplicados.js?v=da8accdedf",
       "./js/escaner.js": "./js/escaner.js?v=3e16c624e2",
       "./js/estado.js": "./js/estado.js?v=22b6b9350f",
-      "./js/formulario.js": "./js/formulario.js?v=5b8e50efa9",
+      "./js/formulario.js": "./js/formulario.js?v=950cf59ba5",
       "./js/github.js": "./js/github.js?v=beb215647d",
       "./js/isbn.js": "./js/isbn.js?v=ade2ed1db3",
       "./js/main.js": "./js/main.js?v=c9016a4f67",
@@ -126,11 +126,12 @@
       <div id="campo-isbn" class="campo-isbn">
         <label for="alta-isbn">ISBN <span class="opcional">(opcional)</span></label>
         <div class="fila-isbn">
-          <input id="alta-isbn" name="isbn" inputmode="numeric" autocomplete="off" enterkeyhint="search">
+          <input id="alta-isbn" name="isbn" inputmode="numeric" autocomplete="off" enterkeyhint="search" placeholder="Vacío: Buscar usa el título">
           <button id="btn-buscar-isbn" type="button" class="secundario">Buscar</button>
           <button id="btn-escanear" type="button" class="secundario" aria-label="Escanear código de barras">📷</button>
         </div>
         <p id="isbn-estado" class="ayuda" role="status"></p>
+        <ul id="isbn-resultados" class="resultados"></ul>
       </div>
       <div id="campo-tmdb" class="campo-isbn">
         <label for="tmdb-buscar">Buscar en TMDB <span class="opcional">(rellena datos, portada y saga)</span></label>
