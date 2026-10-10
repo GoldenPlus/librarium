@@ -10,6 +10,29 @@ const anioDe = (texto) => {
   return m ? Number(m[1]) : null;
 };
 
+/**
+ * Saga escrita en el título o el subtítulo, que es lo único que dan Google Books y Open Library:
+ * «La vieja guardia nº 01/06», «… 01 de 06» o «Título (Saga, #2)». Devuelve { nombre, orden, total } o null.
+ */
+export function sagaDelTitulo(titulo, subtitulo = '') {
+  const numerada = /^(.*?)[\s,.:;(\-–—]*(?:n[º°o]\.?|núm\.?|vol\.?|tomo|libro)?\s*(\d{1,3})\s*(?:\/|de)\s*(\d{1,3})\s*\)?\s*$/i;
+  const almohadilla = /\(([^()]+?),?\s*#(\d{1,3})\)\s*$/;
+  for (const [texto, base] of [[titulo, ''], [subtitulo, titulo]]) {
+    const t = String(texto ?? '').trim();
+    if (!t) continue;
+    const m = t.match(numerada);
+    if (m) {
+      const orden = Number(m[2]);
+      const total = Number(m[3]);
+      const nombre = (m[1].trim() || String(base).trim()).replace(/[\s,.:;\-–—]+$/, '');
+      if (nombre && orden >= 1 && orden <= total) return { nombre, orden, total };
+    }
+    const h = t.match(almohadilla);
+    if (h && Number(h[2]) >= 1) return { nombre: h[1].trim(), orden: Number(h[2]), total: null };
+  }
+  return null;
+}
+
 const nombres = (lista) => (Array.isArray(lista) ? lista.filter(Boolean).join(', ') : '');
 
 /**
@@ -26,6 +49,7 @@ export function desdeOpenLibrary(edicion, busqueda) {
     autor: nombres(doc?.author_name),
     anio: anioDe(edicion?.publish_date) ?? doc?.first_publish_year ?? null,
     portada: idPortada ? `https://covers.openlibrary.org/b/id/${idPortada}-M.jpg` : '',
+    saga: sagaDelTitulo(titulo, edicion?.subtitle),
     fuente: 'Open Library',
   };
 }
@@ -42,6 +66,7 @@ export function desdeGoogleBooks(json, isbn = null) {
     autor: nombres(info.authors),
     anio: anioDe(info.publishedDate),
     portada: imagen.replace(/^http:/, 'https:').replace(/&edge=curl/, ''),
+    saga: sagaDelTitulo(info.title, info.subtitle),
     fuente: 'Google Books',
   };
 }
@@ -51,7 +76,7 @@ export function combinar(a, b) {
   if (!a) return b;
   if (!b) return a;
   const r = { ...a };
-  for (const campo of ['titulo', 'autor', 'anio', 'portada']) if (!r[campo] && b[campo]) r[campo] = b[campo];
+  for (const campo of ['titulo', 'autor', 'anio', 'portada', 'saga']) if (!r[campo] && b[campo]) r[campo] = b[campo];
   if (r.autor !== a.autor || r.portada !== a.portada) r.fuente = `${a.fuente} y ${b.fuente}`;
   return r;
 }
@@ -86,7 +111,7 @@ async function consultarGoogle(fetchImpl, url) {
 }
 
 /**
- * Devuelve { libro, errorGoogle }. `libro` es { titulo, autor, anio, portada, fuente } o null si ninguna fuente lo conoce;
+ * Devuelve { libro, errorGoogle }. `libro` es { titulo, autor, anio, portada, saga, fuente } o null si ninguna fuente lo conoce;
  * `errorGoogle` explica por qué falló Google Books (o null si respondió o no hizo falta consultarlo).
  */
 export async function buscarLibro(isbn, { fetch: fetchImpl = (...a) => globalThis.fetch(...a), claveGoogle = '' } = {}) {
@@ -113,7 +138,7 @@ export async function buscarLibro(isbn, { fetch: fetchImpl = (...a) => globalThi
 // ---------- Búsqueda por título, cuando no hay ISBN
 
 /**
- * Resultados de Google Books como fichas para elegir: { titulo, autor, anio, portada, fuente }.
+ * Resultados de Google Books como fichas para elegir: { titulo, autor, anio, portada, saga, fuente }.
  * Sin ISBN: por título no se sabe qué edición tenéis, y un ISBN equivocado acabaría siendo el identificador.
  */
 export function resultadosGoogle(json) {
@@ -129,6 +154,7 @@ export function resultadosOpenLibrary(json) {
       autor: nombres(doc.author_name),
       anio: doc.first_publish_year ?? null,
       portada: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : '',
+      saga: sagaDelTitulo(doc.title, doc.subtitle),
       fuente: 'Open Library',
     }));
 }
@@ -144,7 +170,7 @@ export async function buscarPorTitulo(titulo, { autor = '', fetch: fetchImpl = (
   const deGoogle = resultadosGoogle(google.json);
   if (deGoogle.length) return { resultados: deGoogle, errorGoogle: null };
 
-  const parametros = new URLSearchParams({ title: titulo, fields: 'title,author_name,first_publish_year,cover_i', limit: '10' });
+  const parametros = new URLSearchParams({ title: titulo, fields: 'title,subtitle,author_name,first_publish_year,cover_i', limit: '10' });
   if (autor) parametros.set('author', autor);
   const ol = await json(fetchImpl, `${OPEN_LIBRARY}/search.json?${parametros}`);
   return { resultados: resultadosOpenLibrary(ol), errorGoogle: google.error ?? null };

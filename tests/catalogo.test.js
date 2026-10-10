@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buscarLibro, buscarPorTitulo, desdeOpenLibrary, desdeGoogleBooks, motivoFalloGoogle } from '../js/catalogo.js';
+import { buscarLibro, buscarPorTitulo, sagaDelTitulo, desdeOpenLibrary, desdeGoogleBooks, motivoFalloGoogle } from '../js/catalogo.js';
 import { isbnDeCodigo } from '../js/isbn.js';
 
 // Respuestas reales recortadas (Open Library, sep 2026).
@@ -21,6 +21,7 @@ test('Open Library: título de la edición, autor de la obra', () => {
     autor: 'Ryszard Kapuściński',
     anio: 2008,
     portada: 'https://covers.openlibrary.org/b/id/15162534-M.jpg',
+    saga: null,
     fuente: 'Open Library',
   });
   assert.equal(desdeOpenLibrary(null, { docs: [] }), null);
@@ -121,4 +122,20 @@ test('por título: sin nada en Google Books se usa Open Library, y se avisa si G
   assert.equal(resultados[0].autor, 'Ryszard Kapuściński');
   assert.equal(resultados[0].fuente, 'Open Library');
   assert.equal(errorGoogle, 'se ha agotado la cuota diaria de consultas');
+});
+
+test('saga escrita en el título o el subtítulo', () => {
+  assert.deepEqual(sagaDelTitulo('La vieja guardia nº 01/06'), { nombre: 'La vieja guardia', orden: 1, total: 6 });
+  assert.deepEqual(sagaDelTitulo('La vieja guardia 01 de 06'), { nombre: 'La vieja guardia', orden: 1, total: 6 });
+  assert.deepEqual(sagaDelTitulo('La vieja guardia', '01 de 06'), { nombre: 'La vieja guardia', orden: 1, total: 6 });
+  assert.deepEqual(sagaDelTitulo('Saga - Tomo 3/9'), { nombre: 'Saga', orden: 3, total: 9 });
+  assert.deepEqual(sagaDelTitulo('El nombre del viento (Crónica del asesino de reyes, #1)'), { nombre: 'Crónica del asesino de reyes', orden: 1, total: null });
+  assert.equal(sagaDelTitulo('1984'), null);
+  assert.equal(sagaDelTitulo('Cien años de soledad'), null);
+  assert.equal(sagaDelTitulo('Algo 7 de 3'), null, 'el número no puede pasar del total');
+});
+
+test('Google Books trae la saga del título', () => {
+  const r = desdeGoogleBooks({ items: [{ volumeInfo: { title: 'La vieja guardia nº 01/06', authors: ['Greg Rucka'] } }] });
+  assert.deepEqual(r.saga, { nombre: 'La vieja guardia', orden: 1, total: 6 });
 });

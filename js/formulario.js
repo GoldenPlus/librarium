@@ -60,6 +60,18 @@ function ajustar() {
   sugerirTotal();
 }
 
+/** Rellena la saga encontrada en una búsqueda y despliega su recuadro; no pisa una saga ya escrita. Devuelve si la puso. */
+function proponerSaga(saga) {
+  const f = form();
+  if (!saga?.nombre || !CON_SAGA.includes(tipoActual()) || f.saga.value.trim()) return false;
+  $('#campo-saga').open = true;
+  f.saga.value = saga.nombre;
+  f.saga_orden.value = saga.orden ?? '';
+  f.saga_total.value = saga.total ?? '';
+  sugerirTotal();
+  return true;
+}
+
 /** Si la saga escrita ya existe, su total aparece como sugerencia. */
 function sugerirTotal() {
   const f = form();
@@ -255,7 +267,8 @@ async function procesarIsbn(texto, { enfocar = true } = {}) {
   if (datos.autor) f.autor.value = datos.autor;
   if (datos.anio) f.anio.value = datos.anio;
   ponerPortada(datos.portada);
-  estadoIsbn(`Datos de ${datos.fuente}. Revísalos, elige la ubicación y guarda.`);
+  const conSaga = proponerSaga(datos.saga) ? ', con la saga sacada del título' : '';
+  estadoIsbn(`Datos de ${datos.fuente}${conSaga}. Revísalos, elige la ubicación y guarda.`);
   if (enfocar) f.ubicacion.focus();
 }
 
@@ -297,7 +310,8 @@ function elegirLibro(libro) {
   if (libro.autor) f.autor.value = libro.autor;
   f.anio.value = libro.anio ?? '';
   ponerPortada(libro.portada);
-  estadoIsbn(`Datos de ${libro.fuente}. Revísalos, elige la ubicación y guarda.`);
+  const conSaga = proponerSaga(libro.saga) ? ', con la saga sacada del título' : '';
+  estadoIsbn(`Datos de ${libro.fuente}${conSaga}. Revísalos, elige la ubicación y guarda.`);
 }
 
 let escaneo = null;
@@ -446,12 +460,7 @@ async function elegirTmdb(resultado) {
     }
     if (d.coleccion && !f.saga.value.trim()) {
       const saga = await tmdb.saga(d.coleccion, d.id).catch(() => null);
-      if (saga?.nombre) {
-        $('#campo-saga').open = true;
-        f.saga.value = saga.nombre;
-        f.saga_orden.value = saga.orden ?? '';
-        f.saga_total.value = saga.total ?? '';
-        sugerirTotal();
+      if (proponerSaga(saga)) {
         notas.push(`Saga propuesta: ${saga.nombre}${saga.orden ? `, nº ${saga.orden}` : ''}${saga.total ? ` de ${saga.total}` : ''}.`);
       }
     }
