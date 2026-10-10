@@ -156,5 +156,19 @@ export function crearCliente({ token, repo, fetch: fetchImpl = (...a) => globalT
     return res.blob();
   }
 
-  return { comprobarRepo, leer, actualizar, subirArchivo, leerArchivo };
+  /** Borra un archivo del repo. Si ya no existe, no hace nada. */
+  async function borrarArchivo(ruta, mensaje) {
+    const meta = await peticion(`/contents/${ruta}`);
+    if (meta.status === 404) return;
+    if (!meta.ok) throw new GitHubError(mensajeDeEstado(meta.status, ruta), meta.status);
+    const { sha } = await meta.json();
+    const res = await peticion(`/contents/${ruta}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: mensaje, sha }),
+    });
+    if (!res.ok && res.status !== 404) throw new GitHubError(mensajeDeEstado(res.status, ruta), res.status);
+  }
+
+  return { comprobarRepo, leer, actualizar, subirArchivo, leerArchivo, borrarArchivo };
 }

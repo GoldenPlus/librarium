@@ -10,7 +10,7 @@ import { crearTmdb } from './tmdb.js';
 import { app, claveDe, sagaDe } from './estado.js';
 import { normalizar } from './texto.js';
 import { sacarFotoPortada } from './foto.js';
-import { urlPortada, recordarPortada } from './portadas.js';
+import { urlPortada, recordarPortada, borrarFotoSinUso } from './portadas.js';
 import { $, el, aviso, ocupado } from './dom.js';
 
 const form = () => $('#form-alta');
@@ -657,6 +657,10 @@ async function guardar(forzar) {
     const accion = m.edicion ? 'Edición' : 'Alta';
     const resultado = await app.cliente.actualizar(`${tipo}.json`, mutar, `${accion}: ${item.titulo} (por ${app.config.nombre})`);
     app.almacen.fijar(tipo, resultado.datos);
+    // La foto anterior, si se ha cambiado por otra portada, ya no la usa nadie.
+    if (m.edicion && m.original.portada !== item.portada) {
+      await borrarFotoSinUso(m.original.portada, `Portada sustituida: ${item.titulo} (por ${app.config.nombre})`);
+    }
     $('#dlg-alta').close();
     alGuardar();
     aviso(m.edicion ? `«${item.titulo}» guardado.` : `«${item.titulo}» añadido.`);

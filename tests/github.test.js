@@ -109,3 +109,18 @@ test('subir un archivo binario lo manda en base64 sin sha', async () => {
   assert.equal(peticion.method, 'PUT');
   assert.deepEqual(JSON.parse(peticion.body), { message: 'Portada', content: '/9j/' });
 });
+
+test('borrar un archivo pide su sha y lo borra; si no existe, no hace nada', async () => {
+  const peticiones = [];
+  const fetch = async (url, opciones = {}) => {
+    peticiones.push({ url, ...opciones });
+    if (!opciones.method) return { ok: true, status: 200, json: async () => ({ sha: 'abc' }) };
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  await crearCliente({ token: 't', repo: 'a/b', fetch }).borrarArchivo('portadas/x.jpg', 'Baja');
+  assert.equal(peticiones[1].method, 'DELETE');
+  assert.deepEqual(JSON.parse(peticiones[1].body), { message: 'Baja', sha: 'abc' });
+
+  const sinArchivo = async () => ({ ok: false, status: 404, json: async () => ({}) });
+  await crearCliente({ token: 't', repo: 'a/b', fetch: sinArchivo }).borrarArchivo('portadas/x.jpg', 'Baja');
+});

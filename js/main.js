@@ -9,7 +9,7 @@ import { compararTitulos, limpiar } from './texto.js';
 import { app, sagaDe } from './estado.js';
 import { $, el, aviso, fechaLegible, ocupado } from './dom.js';
 import { abrirAlta, abrirEdicion, abrirEscaner, iniciarFormulario } from './formulario.js';
-import { imagenPortada } from './portadas.js';
+import { imagenPortada, borrarFotoSinUso } from './portadas.js';
 
 const CLAVE_AGRUPAR = 'librarium.agrupar';
 
@@ -225,6 +225,7 @@ async function borrar() {
       `Baja: ${item.titulo} (por ${app.config.nombre})`,
     );
     app.almacen.fijar(tipo, resultado.datos);
+    await borrarFotoSinUso(item.portada, `Baja: portada de ${item.titulo} (por ${app.config.nombre})`);
     $('#dlg-detalle').close();
     render();
     aviso(`«${item.titulo}» eliminado.`);
