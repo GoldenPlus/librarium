@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buscarLibro, buscarPorTitulo, sagaDelTitulo, desdeOpenLibrary, desdeGoogleBooks, motivoFalloGoogle } from '../js/catalogo.js';
+import { buscarLibro, buscarPorTitulo, resultadosGoogle, sagaDelTitulo, desdeOpenLibrary, desdeGoogleBooks, motivoFalloGoogle } from '../js/catalogo.js';
 import { isbnDeCodigo } from '../js/isbn.js';
 
 // Respuestas reales recortadas (Open Library, sep 2026).
@@ -138,4 +138,12 @@ test('saga escrita en el título o el subtítulo', () => {
 test('Google Books trae la saga del título', () => {
   const r = desdeGoogleBooks({ items: [{ volumeInfo: { title: 'La vieja guardia nº 01/06', authors: ['Greg Rucka'] } }] });
   assert.deepEqual(r.saga, { nombre: 'La vieja guardia', orden: 1, total: 6 });
+});
+
+test('por título, Google Books trae el ISBN de esa edición', () => {
+  const json = { items: [
+    { volumeInfo: { title: 'La sombra del viento', industryIdentifiers: [{ type: 'ISBN_10', identifier: '8408043641' }, { type: 'ISBN_13', identifier: '9788408043645' }] } },
+    { volumeInfo: { title: 'Sin ISBN', industryIdentifiers: [{ type: 'OTHER', identifier: 'UOM:39015' }] } },
+  ] };
+  assert.deepEqual(resultadosGoogle(json).map((r) => r.isbn), ['9788408043645', '']);
 });

@@ -138,14 +138,25 @@ export async function buscarLibro(isbn, { fetch: fetchImpl = (...a) => globalThi
 // ---------- Búsqueda por título, cuando no hay ISBN
 
 /**
- * Resultados de Google Books como fichas para elegir: { titulo, autor, anio, portada, saga, fuente }.
- * Sin ISBN: por título no se sabe qué edición tenéis, y un ISBN equivocado acabaría siendo el identificador.
+ * Resultados de Google Books como fichas para elegir: { titulo, autor, anio, portada, saga, isbn, fuente }.
+ * Cada resultado es una edición concreta, así que su ISBN (el de 13 cifras si lo tiene) es el de esa edición.
  */
 export function resultadosGoogle(json) {
-  return (json?.items ?? []).map((item) => desdeGoogleBooks({ items: [item] })).filter(Boolean);
+  return (json?.items ?? [])
+    .map((item) => {
+      const libro = desdeGoogleBooks({ items: [item] });
+      if (!libro) return null;
+      const ids = item.volumeInfo?.industryIdentifiers ?? [];
+      const elegido = ids.find((id) => id.type === 'ISBN_13') ?? ids.find((id) => id.type === 'ISBN_10');
+      return { ...libro, isbn: normalizarIsbn(elegido?.identifier) ?? '' };
+    })
+    .filter(Boolean);
 }
 
-/** Resultados de /search.json de Open Library con el mismo formato. */
+/**
+ * Resultados de /search.json de Open Library con el mismo formato, pero sin ISBN:
+ * cada resultado es una obra con los ISBN de todas sus ediciones mezclados, y no se sabe cuál es la vuestra.
+ */
 export function resultadosOpenLibrary(json) {
   return (json?.docs ?? [])
     .filter((doc) => doc.title)
@@ -155,6 +166,7 @@ export function resultadosOpenLibrary(json) {
       anio: doc.first_publish_year ?? null,
       portada: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : '',
       saga: sagaDelTitulo(doc.title, doc.subtitle),
+      isbn: '',
       fuente: 'Open Library',
     }));
 }

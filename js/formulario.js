@@ -329,8 +329,12 @@ function elegirLibro(libro) {
   if (libro.autor) f.autor.value = libro.autor;
   f.anio.value = libro.anio ?? '';
   ponerPortada(libro.portada);
+  f.isbn.value = libro.isbn;
   const conSaga = proponerSaga(libro.saga) ? ', con la saga sacada del título' : '';
-  estadoIsbn(`Datos de ${libro.fuente}${conSaga}. Revísalos, elige la ubicación y guarda.`);
+  const sinIsbn = libro.isbn ? '' : ' Sin ISBN: si el libro lo tiene, escríbelo.';
+  estadoIsbn(`Datos de ${libro.fuente}${conSaga}. Revísalos, elige la ubicación y guarda.${sinIsbn}`);
+  const existente = libro.isbn && yaTenemos(libro.isbn);
+  if (existente) mostrarError(`Ya lo tenéis: «${existente.titulo}»${dondeEsta(existente) ? ` en ${dondeEsta(existente)}` : ''}.`);
 }
 
 let escaneo = null;
