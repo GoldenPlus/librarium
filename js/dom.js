@@ -26,3 +26,21 @@ export function aviso(texto) {
 export function fechaLegible(iso) {
   return iso ? new Date(iso).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : '';
 }
+
+/**
+ * Marca un botón como ocupado mientras dura una acción lenta: desactivado, con una ruedita y, si se da, otro texto.
+ * Devuelve la función que lo deja como estaba.
+ */
+export function ocupado(boton, texto) {
+  const antes = boton.textContent;
+  boton.disabled = true;
+  boton.classList.add('cargando');
+  boton.setAttribute('aria-busy', 'true');
+  if (texto) boton.textContent = texto;
+  return () => {
+    boton.disabled = false;
+    boton.classList.remove('cargando');
+    boton.removeAttribute('aria-busy');
+    boton.textContent = antes;
+  };
+}

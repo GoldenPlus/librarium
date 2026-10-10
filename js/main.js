@@ -7,7 +7,7 @@ import { terminosDe, coincide } from './busqueda.js';
 import { estadoSaga } from './sagas.js';
 import { compararTitulos, limpiar } from './texto.js';
 import { app, sagaDe } from './estado.js';
-import { $, el, aviso, fechaLegible } from './dom.js';
+import { $, el, aviso, fechaLegible, ocupado } from './dom.js';
 import { abrirAlta, abrirEdicion, abrirEscaner, iniciarFormulario } from './formulario.js';
 
 const CLAVE_AGRUPAR = 'librarium.agrupar';
@@ -137,8 +137,7 @@ async function recargar() {
     mostrarEstado(fecha ? `Sin conexión. Mostrando la copia del ${fechaLegible(fecha)}.` : 'Sin conexión.');
     return;
   }
-  const boton = $('#btn-recargar');
-  boton.disabled = true;
+  const listo = ocupado($('#btn-recargar'));
   mostrarEstado('Cargando…');
   try {
     await app.almacen.recargar(app.cliente);
@@ -148,7 +147,7 @@ async function recargar() {
     const fecha = app.almacen.fecha;
     mostrarEstado(e.message + (fecha ? ` Mostrando la copia del ${fechaLegible(fecha)}.` : ''), true);
   } finally {
-    boton.disabled = false;
+    listo();
   }
 }
 
@@ -217,8 +216,7 @@ async function borrar() {
     $('#detalle-error').textContent = 'Sin conexión: no se puede eliminar ahora.';
     return;
   }
-  const boton = $('#detalle-borrar');
-  boton.disabled = true;
+  const listo = ocupado($('#detalle-borrar'), 'Eliminando…');
   try {
     const resultado = await app.cliente.actualizar(
       `${tipo}.json`,
@@ -232,7 +230,7 @@ async function borrar() {
   } catch (e) {
     $('#detalle-error').textContent = e.message;
   } finally {
-    boton.disabled = false;
+    listo();
   }
 }
 
@@ -255,9 +253,7 @@ async function guardarAjustes(evento) {
   if (!nueva.nombre || !nueva.token) return void (error.textContent = 'Rellena tu nombre y el token.');
   if (!repo) return void (error.textContent = 'El repositorio debe tener la forma usuario/nombre.');
 
-  const boton = $('#ajustes-guardar');
-  boton.disabled = true;
-  boton.textContent = 'Comprobando…';
+  const listo = ocupado($('#ajustes-guardar'), 'Comprobando…');
   error.textContent = '';
   try {
     const cliente = crearCliente(nueva);
@@ -272,8 +268,7 @@ async function guardarAjustes(evento) {
   } catch (e) {
     error.textContent = e.message;
   } finally {
-    boton.disabled = false;
-    boton.textContent = 'Guardar y conectar';
+    listo();
   }
 }
 

@@ -9,7 +9,7 @@ import { datosCamara, escanearIsbn, guardarFotograma } from './escaner.js';
 import { crearTmdb } from './tmdb.js';
 import { app, claveDe, sagaDe } from './estado.js';
 import { normalizar } from './texto.js';
-import { $, el, aviso } from './dom.js';
+import { $, el, aviso, ocupado } from './dom.js';
 
 const form = () => $('#form-alta');
 
@@ -267,10 +267,9 @@ async function procesarIsbn(texto, { enfocar = true } = {}) {
   if (!navigator.onLine) return estadoIsbn('Sin conexión: rellena los datos a mano. El ISBN se guarda igual.');
 
   estadoIsbn('Buscando datos…');
-  const boton = $('#btn-buscar-isbn');
-  boton.disabled = true;
+  const listo = ocupado($('#btn-buscar-isbn'), 'Buscando…');
   const { libro: datos, errorGoogle } = await buscarLibro(isbn, { claveGoogle: claveDe('google') });
-  boton.disabled = false;
+  listo();
   if (normalizarIsbn(f.isbn.value) !== isbn) return; // Se cambió el ISBN mientras tanto.
 
   if (!datos) {
@@ -301,10 +300,9 @@ async function buscarTitulo() {
   if (!navigator.onLine) return estadoIsbn('Sin conexión: rellena los datos a mano.');
 
   estadoIsbn(`Buscando «${titulo}»…`);
-  const boton = $('#btn-buscar-isbn');
-  boton.disabled = true;
+  const listo = ocupado($('#btn-buscar-isbn'), 'Buscando…');
   const { resultados, errorGoogle } = await buscarPorTitulo(titulo, { autor: conAutor(tipoActual()) ? f.autor.value.trim() : '', claveGoogle: claveDe('google') });
-  boton.disabled = false;
+  listo();
   if (f.titulo.value.trim() !== titulo || f.isbn.value.trim()) return; // Se cambió mientras tanto.
 
   if (!resultados.length) {
@@ -430,8 +428,7 @@ async function buscarTmdb() {
   const texto = $('#tmdb-buscar').value.trim();
   if (!texto) return;
   $('#tmdb-resultados').replaceChildren();
-  const boton = $('#btn-tmdb');
-  boton.disabled = true;
+  const listo = ocupado($('#btn-tmdb'), 'Buscando…');
   estadoTmdb('Buscando…');
   try {
     const resultados = await clienteTmdb().buscar(texto);
@@ -450,7 +447,7 @@ async function buscarTmdb() {
   } catch (e) {
     estadoTmdb(e.message, true);
   } finally {
-    boton.disabled = false;
+    listo();
   }
 }
 
@@ -591,9 +588,7 @@ async function guardar(forzar) {
     return;
   }
 
-  const boton = $('#alta-guardar');
-  boton.disabled = true;
-  boton.textContent = 'Guardando…';
+  const listo = ocupado($('#alta-guardar'), 'Guardando…');
   try {
     if (saga) await asegurarSagaRemota(tipo, saga);
     // Segunda comprobación contra la versión más reciente del fichero, dentro del ciclo de reintento.
@@ -621,8 +616,7 @@ async function guardar(forzar) {
       app.almacen.recargar(app.cliente).then(alGuardar, () => {});
     }
   } finally {
-    boton.disabled = false;
-    boton.textContent = 'Guardar';
+    listo();
   }
 }
 
@@ -630,8 +624,7 @@ async function guardar(forzar) {
 async function guardarTemporadas(tipo, existente, item) {
   limpiarMensajes();
   if (!navigator.onLine) return mostrarError('Sin conexión: no se puede guardar ahora. Lo escrito se mantiene.');
-  const boton = $('#alta-forzar');
-  boton.disabled = true;
+  const listo = ocupado($('#alta-forzar'), 'Guardando…');
   let resumen;
   try {
     const opciones = { nombre: app.config.nombre, fecha: hoy(), total: item.temporadas_total };
@@ -653,7 +646,7 @@ async function guardarTemporadas(tipo, existente, item) {
   } catch (e) {
     mostrarError(e.message);
   } finally {
-    boton.disabled = false;
+    listo();
   }
 }
 
