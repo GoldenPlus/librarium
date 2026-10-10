@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#7a3e1d">
   <title>Librarium</title>
   <!-- versiones: generado por npm run versionar -->
-  <link rel="stylesheet" href="css/app.css?v=d6ae54eb0a">
+  <link rel="stylesheet" href="css/app.css?v=46d09c5641">
   <script type="importmap">
   { "imports": {
       "./js/almacen.js": "./js/almacen.js?v=ce0367fb1e",
@@ -17,17 +17,17 @@
       "./js/duplicados.js": "./js/duplicados.js?v=da8accdedf",
       "./js/escaner.js": "./js/escaner.js?v=3e16c624e2",
       "./js/estado.js": "./js/estado.js?v=22b6b9350f",
-      "./js/formulario.js": "./js/formulario.js?v=a926b1a2bd",
+      "./js/formulario.js": "./js/formulario.js?v=5b8e50efa9",
       "./js/github.js": "./js/github.js?v=beb215647d",
       "./js/isbn.js": "./js/isbn.js?v=ade2ed1db3",
-      "./js/main.js": "./js/main.js?v=582378c021",
+      "./js/main.js": "./js/main.js?v=09b05b3c80",
       "./js/modelo.js": "./js/modelo.js?v=2192cafdc4",
       "./js/sagas.js": "./js/sagas.js?v=6d8fb25d11",
       "./js/texto.js": "./js/texto.js?v=cd9e68cb5e",
       "./js/tmdb.js": "./js/tmdb.js?v=7d9fcc65a4"
   } }
   </script>
-  <script type="module" src="js/main.js?v=582378c021"></script>
+  <script type="module" src="js/main.js?v=09b05b3c80"></script>
   <!-- /versiones -->
 </head>
 <body>
@@ -45,7 +45,7 @@
     <p id="estado" class="estado" role="status"></p>
     <div class="barra-lista">
       <p id="contador" class="contador"></p>
-      <label class="agrupar"><input id="agrupar" type="checkbox"> Agrupar sagas</label>
+      <label class="agrupar"><input id="agrupar" type="checkbox"> Agrupar</label>
     </div>
     <ul id="lista" class="lista"></ul>
     <p id="vacio" class="vacio" hidden></p>
@@ -154,39 +154,44 @@
       <label>Año
         <input name="anio" type="number" inputmode="numeric" min="0" max="3000">
       </label>
-      <label id="campo-temporadas">Temporadas que tenéis
-        <span class="fila-isbn">
-          <input name="temporadas" placeholder="por ejemplo 1-3, 5" autocomplete="off">
-          <button id="btn-todas" type="button" class="secundario" hidden>Todas</button>
-        </span>
-      </label>
       <label id="campo-formato">Formato
         <select name="formato" id="alta-formato"></select>
       </label>
-      <label id="campo-ubicacion">Ubicación
-        <input name="ubicacion" list="dl-ubicaciones" required autocomplete="off">
-      </label>
+      <div id="campo-ubicacion" class="campo-isbn">
+        <label for="alta-ubicacion">Ubicación</label>
+        <input id="alta-ubicacion" name="ubicacion" required autocomplete="off" placeholder="Escribe una o elige de la lista">
+      </div>
       <div id="campo-temporadas-edicion" class="temporadas-edicion">
         <span class="etiqueta">Temporadas</span>
         <div id="filas-temporadas"></div>
         <button id="btn-temporada" type="button" class="secundario">＋ Temporada</button>
       </div>
-      <fieldset class="saga">
-        <legend>Saga <span class="opcional">(opcional)</span></legend>
-        <label class="ancho">Nombre
-          <input name="saga" list="dl-sagas" autocomplete="off" placeholder="por ejemplo El Señor de los Anillos">
-        </label>
-        <label>Número
-          <input name="saga_orden" type="number" inputmode="numeric" min="1" max="999">
-        </label>
-        <label>Total
-          <input name="saga_total" type="number" inputmode="numeric" min="1" max="999">
+      <fieldset id="campo-temporadas" class="caja">
+        <legend>Temporada</legend>
+        <label class="ancho">Las que tenéis
+          <span class="fila-isbn">
+            <input name="temporadas" placeholder="por ejemplo 1-3, 5" autocomplete="off">
+            <button id="btn-todas" type="button" class="secundario" hidden>Todas</button>
+          </span>
         </label>
       </fieldset>
+      <details id="campo-saga" class="caja saga">
+        <summary>Saga <span class="opcional">(opcional)</span></summary>
+        <div class="saga-campos">
+          <label class="ancho">Nombre
+            <input name="saga" list="dl-sagas" autocomplete="off" placeholder="por ejemplo El Señor de los Anillos">
+          </label>
+          <label>Número
+            <input name="saga_orden" type="number" inputmode="numeric" min="1" max="999">
+          </label>
+          <label>Total
+            <input name="saga_total" type="number" inputmode="numeric" min="1" max="999">
+          </label>
+        </div>
+      </details>
       <label>Notas
         <textarea name="notas" rows="2"></textarea>
       </label>
-      <datalist id="dl-ubicaciones"></datalist>
       <datalist id="dl-sagas"></datalist>
 
       <p id="alta-error" class="error" role="alert"></p>

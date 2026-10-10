@@ -8,6 +8,7 @@ import { buscarLibro } from './catalogo.js';
 import { datosCamara, escanearIsbn, guardarFotograma } from './escaner.js';
 import { crearTmdb } from './tmdb.js';
 import { app, claveDe, sagaDe } from './estado.js';
+import { normalizar } from './texto.js';
 import { $, el, aviso } from './dom.js';
 
 const form = () => $('#form-alta');
@@ -15,6 +16,12 @@ const form = () => $('#form-alta');
 /** { edicion: false } para altas; { edicion: true, tipo, original } al editar. */
 let modo = { edicion: false };
 let alGuardar = () => {};
+
+/** Las series y los documentales no llevan saga: en su lugar va la temporada. */
+const CON_SAGA = ['libros', 'comics', 'peliculas'];
+
+/** Ubicaciones ya usadas en cualquier tipo, en orden alfabético. */
+let ubicaciones = [];
 
 // ---------- Presentación
 
@@ -45,8 +52,10 @@ function ajustar() {
   $('#campo-ubicacion').hidden = filasDeTemporadas;
   $('#campo-autor').hidden = !conAutor(tipo);
   $('#etiqueta-autor').textContent = TIPO[tipo].autor ?? '';
+  $('#campo-saga').hidden = !CON_SAGA.includes(tipo);
 
-  rellenarDatalist('#dl-ubicaciones', ubicacionesDe(TIPOS.flatMap((t) => app.almacen.items(t.clave))));
+  ubicaciones = ubicacionesDe(TIPOS.flatMap((t) => app.almacen.items(t.clave)));
+  for (const boton of document.querySelectorAll('#form-alta .combo-abrir')) boton.hidden = !ubicaciones.length;
   rellenarDatalist('#dl-sagas', app.almacen.items('sagas').filter((s) => s.tipo === tipo).map((s) => s.nombre));
   sugerirTotal();
 }
@@ -111,13 +120,44 @@ function ofrecerTemporadas(tipo, existente, item) {
   );
 }
 
+// ---------- Ubicación: se escribe una nueva o se elige de las que ya hay
+
+/** Envuelve un campo de ubicación con un botón ▾ que despliega las ubicaciones guardadas; al escribir, se filtran. */
+function selectorUbicacion(input) {
+  const lista = el('ul', { class: 'combo-lista', role: 'listbox', 'aria-label': 'Ubicaciones guardadas', hidden: true });
+  const boton = el('button', { type: 'button', class: 'secundario combo-abrir', 'aria-label': 'Elegir una ubicación guardada', hidden: !ubicaciones.length }, '▾');
+  const combo = el('div', { class: 'combo' }, el('div', { class: 'fila-isbn' }, input, boton), lista);
+
+  const cerrar = () => (lista.hidden = true);
+  const mostrar = (filtro) => {
+    const texto = normalizar(filtro);
+    const valores = texto ? ubicaciones.filter((u) => normalizar(u).includes(texto)) : ubicaciones;
+    lista.replaceChildren(
+      ...valores.map((v) =>
+        el('li', {}, el('button', { type: 'button', role: 'option', onclick: () => { input.value = v; cerrar(); } }, v)),
+      ),
+    );
+    lista.hidden = !valores.length;
+  };
+
+  // El botón despliega la lista sin poner el foco en el campo, así no sale el teclado.
+  boton.addEventListener('click', () => (lista.hidden ? mostrar('') : cerrar()));
+  input.addEventListener('input', () => (input.value.trim() ? mostrar(input.value) : cerrar()));
+  // Tocar una opción no debe quitar el foco al campo: si no, la lista se cerraría antes del clic.
+  lista.addEventListener('mousedown', (e) => e.preventDefault());
+  combo.addEventListener('focusout', (e) => {
+    if (!combo.contains(e.relatedTarget)) cerrar();
+  });
+  return combo;
+}
+
 const opcionesFormato = (elegido) => FORMATOS.map((v) => el('option', { value: v, selected: v === elegido }, v));
 
 function filaTemporada({ num, formato = '', ubicacion = '' }) {
   return el('div', { class: 'fila-temporada' },
     el('input', { type: 'number', min: 1, max: 100, value: num, 'data-campo': 'num', 'aria-label': 'Número de temporada' }),
     el('select', { 'data-campo': 'formato', 'aria-label': 'Formato' }, opcionesFormato(normalizarFormato(formato) || formatoPorDefecto(tipoActual()))),
-    el('input', { 'data-campo': 'ubicacion', list: 'dl-ubicaciones', value: ubicacion, placeholder: 'Ubicación', 'aria-label': 'Ubicación' }),
+    selectorUbicacion(el('input', { 'data-campo': 'ubicacion', value: ubicacion, placeholder: 'Ubicación', 'aria-label': 'Ubicación', autocomplete: 'off' })),
     el('button', { type: 'button', class: 'icono', 'aria-label': `Quitar temporada`, onclick: (e) => e.currentTarget.parentElement.remove() }, '✕'),
   );
 }
@@ -354,6 +394,7 @@ async function elegirTmdb(resultado) {
     if (d.coleccion && !f.saga.value.trim()) {
       const saga = await tmdb.saga(d.coleccion, d.id).catch(() => null);
       if (saga?.nombre) {
+        $('#campo-saga').open = true;
         f.saga.value = saga.nombre;
         f.saga_orden.value = saga.orden ?? '';
         f.saga_total.value = saga.total ?? '';
@@ -370,8 +411,8 @@ async function elegirTmdb(resultado) {
 
 // ---------- Abrir
 
-/** `enfocar: false` (al ir directo al escáner) no pone el foco en el título, para que no salga el teclado. */
-export function abrirAlta(tipoPorDefecto, { enfocar = true } = {}) {
+/** Se abre sin el foco en ningún campo de texto, para que no salga el teclado. */
+export function abrirAlta(tipoPorDefecto) {
   const f = form();
   f.reset();
   modo = { edicion: false };
@@ -379,6 +420,7 @@ export function abrirAlta(tipoPorDefecto, { enfocar = true } = {}) {
   f.tipo.value = tipoPorDefecto;
   f.formato.value = formatoPorDefecto(tipoPorDefecto);
   f.temporadas.placeholder = 'por ejemplo 1-3, 5';
+  $('#campo-saga').open = false;
   $('#filas-temporadas').replaceChildren();
   limpiarTmdb();
   ponerPortada('');
@@ -386,7 +428,6 @@ export function abrirAlta(tipoPorDefecto, { enfocar = true } = {}) {
   limpiarMensajes();
   ajustar();
   $('#dlg-alta').showModal();
-  if (enfocar) f.titulo.focus();
 }
 
 export function abrirEdicion(tipo, item) {
@@ -401,6 +442,7 @@ export function abrirEdicion(tipo, item) {
   f.anio.value = item.anio ?? '';
   f.saga.value = sagaDe(item.saga)?.nombre ?? '';
   f.saga_orden.value = item.saga?.orden ?? '';
+  $('#campo-saga').open = Boolean(f.saga.value);
   $('#filas-temporadas').replaceChildren(...(item.temporadas ?? []).map(filaTemporada));
   limpiarTmdb();
   ponerPortada('');
@@ -434,14 +476,14 @@ async function guardar(forzar) {
   let item;
   let saga;
   try {
-    saga = leerCamposSaga(tipo, campos);
+    saga = CON_SAGA.includes(tipo) ? leerCamposSaga(tipo, campos) : null;
     if (m.edicion) {
       item = editarItem(m.original, tipo, { ...campos, temporadasDetalle: leerFilasTemporadas() }, opciones);
     } else {
       item = construirItem(tipo, campos, opciones);
     }
     if (saga) item.saga = { id: saga.id, orden: saga.orden };
-    else delete item.saga;
+    else if (CON_SAGA.includes(tipo)) delete item.saga;
 
     if (m.edicion && sinCambios(m.original, item) && !(saga && asegurarSaga({ items: app.almacen.items('sagas') }, tipo, saga))) {
       $('#dlg-alta').close();
@@ -536,6 +578,7 @@ export function iniciarFormulario({ despuesDeGuardar }) {
   const f = form();
   $('#alta-tipo').replaceChildren(...TIPOS.map((t) => el('option', { value: t.clave }, t.singular)));
   $('#alta-formato').replaceChildren(...opcionesFormato());
+  $('#campo-ubicacion').append(selectorUbicacion(f.ubicacion));
   f.tipo.addEventListener('change', () => {
     f.formato.value = formatoPorDefecto(f.tipo.value);
     ajustar();

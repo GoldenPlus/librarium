@@ -173,15 +173,33 @@ dialog h2 { margin: 0 0 0.25rem; font-size: 1.2rem; }
 .botones { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
 .hueco { flex: 1; }
 
-.saga { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 0.75rem; border: 1px solid var(--borde); border-radius: 8px; padding: 0.5rem 0.75rem 0.75rem; margin: 0; }
-.saga legend { font-size: 0.9rem; font-weight: 500; padding: 0 0.25rem; }
-.saga .ancho { grid-column: 1 / -1; }
+.caja { display: grid; gap: 0.5rem; border: 1px solid var(--borde); border-radius: 8px; padding: 0.5rem 0.75rem 0.75rem; margin: 0; }
+.caja legend { font-size: 0.9rem; font-weight: 500; padding: 0 0.25rem; }
+/* Saga plegada: solo se ve la cabecera hasta que se despliega o se rellena sola. */
+.saga summary { font-size: 0.9rem; font-weight: 500; cursor: pointer; padding: 0.15rem 0; }
+.saga:not([open]) { padding-bottom: 0.5rem; }
+.saga-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 0.75rem; }
+.saga-campos .ancho { grid-column: 1 / -1; }
+
+/* Ubicación: se escribe o se elige de las que ya hay. */
+.combo { display: grid; gap: 0.3rem; min-width: 0; }
+.combo .fila-isbn button { padding: 0.5em 0.7em; }
+.combo-lista {
+  list-style: none; margin: 0; padding: 0.25rem 0;
+  max-height: 13rem; overflow-y: auto;
+  border: 1px solid var(--borde); border-radius: 8px; background: var(--superficie);
+}
+.combo-lista button {
+  width: 100%; text-align: left; background: transparent; color: var(--texto);
+  border-radius: 0; padding: 0.55em 0.75em; font-weight: 400;
+}
+.combo-lista button:hover, .combo-lista button:focus-visible { background: var(--borde); }
 
 .temporadas-edicion { display: grid; gap: 0.4rem; }
 .temporadas-edicion .etiqueta { font-size: 0.9rem; font-weight: 500; }
 .temporadas-edicion > button { justify-self: start; }
 #filas-temporadas { display: grid; gap: 0.4rem; }
-.fila-temporada { display: grid; grid-template-columns: 3.5rem 1fr 1.4fr auto; gap: 0.35rem; align-items: center; }
+.fila-temporada { display: grid; grid-template-columns: 3.5rem 1fr 1.4fr auto; gap: 0.35rem; align-items: start; }
 
 .campo-isbn { display: grid; gap: 0.3rem; }
 .formulario .campo-isbn > label { display: block; font-size: 0.9rem; font-weight: 500; }
