@@ -23,11 +23,10 @@ const CON_SAGA = ['libros', 'comics', 'peliculas'];
 /** Ubicaciones ya usadas en cualquier tipo, en orden alfabético. */
 let ubicaciones = [];
 
-// ---------- Presentación
+/** Sagas ya creadas del tipo actual, en orden alfabético. */
+let sagas = [];
 
-function rellenarDatalist(selector, valores) {
-  $(selector).replaceChildren(...valores.map((v) => el('option', { value: v })));
-}
+// ---------- Presentación
 
 function tipoActual() {
   return modo.edicion ? modo.tipo : form().tipo.value;
@@ -55,8 +54,8 @@ function ajustar() {
   $('#campo-saga').hidden = !CON_SAGA.includes(tipo);
 
   ubicaciones = ubicacionesDe(TIPOS.flatMap((t) => app.almacen.items(t.clave)));
-  for (const boton of document.querySelectorAll('#form-alta .combo-abrir')) boton.hidden = !ubicaciones.length;
-  rellenarDatalist('#dl-sagas', app.almacen.items('sagas').filter((s) => s.tipo === tipo).map((s) => s.nombre));
+  sagas = app.almacen.items('sagas').filter((s) => s.tipo === tipo).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true }));
+  for (const combo of document.querySelectorAll('#form-alta .combo')) combo.actualizar();
   sugerirTotal();
 }
 
@@ -132,25 +131,34 @@ function ofrecerTemporadas(tipo, existente, item) {
   );
 }
 
-// ---------- Ubicación: se escribe una nueva o se elige de las que ya hay
+// ---------- Ubicación y saga: se escribe una nueva o se elige de las que ya hay
 
-/** Envuelve un campo de ubicación con un botón ▾ que despliega las ubicaciones guardadas; al escribir, se filtran. */
-function selectorUbicacion(input) {
-  const lista = el('ul', { class: 'combo-lista', role: 'listbox', 'aria-label': 'Ubicaciones guardadas', hidden: true });
-  const boton = el('button', { type: 'button', class: 'secundario combo-abrir', 'aria-label': 'Elegir una ubicación guardada', hidden: !ubicaciones.length }, '▾');
+/**
+ * Envuelve un campo con un botón ▾ que despliega los valores guardados (`valores()`, ya ordenados); al escribir, se filtran.
+ * Al elegir uno se pone en el campo y se llama a `alElegir` con él.
+ */
+function selector(input, { valores, nombre, alElegir = () => {} }) {
+  const lista = el('ul', { class: 'combo-lista', role: 'listbox', 'aria-label': `${nombre} guardadas`, hidden: true });
+  const boton = el('button', { type: 'button', class: 'secundario', 'aria-label': `Elegir entre las ${nombre.toLowerCase()} guardadas` }, '▾');
   const combo = el('div', { class: 'combo' }, el('div', { class: 'fila-isbn' }, input, boton), lista);
 
   const cerrar = () => (lista.hidden = true);
   const mostrar = (filtro) => {
     const texto = normalizar(filtro);
-    const valores = texto ? ubicaciones.filter((u) => normalizar(u).includes(texto)) : ubicaciones;
+    const opciones = texto ? valores().filter((v) => normalizar(v).includes(texto)) : valores();
     lista.replaceChildren(
-      ...valores.map((v) =>
-        el('li', {}, el('button', { type: 'button', role: 'option', onclick: () => { input.value = v; cerrar(); } }, v)),
+      ...opciones.map((v) =>
+        el('li', {}, el('button', { type: 'button', role: 'option', onclick: () => { input.value = v; cerrar(); alElegir(v); } }, v)),
       ),
     );
-    lista.hidden = !valores.length;
+    lista.hidden = !opciones.length;
   };
+  // Sin valores guardados no hay nada que desplegar.
+  combo.actualizar = () => {
+    boton.hidden = !valores().length;
+    cerrar();
+  };
+  combo.actualizar();
 
   // El botón despliega la lista sin poner el foco en el campo, así no sale el teclado.
   boton.addEventListener('click', () => (lista.hidden ? mostrar('') : cerrar()));
@@ -161,6 +169,17 @@ function selectorUbicacion(input) {
     if (!combo.contains(e.relatedTarget)) cerrar();
   });
   return combo;
+}
+
+const selectorUbicacion = (input) => selector(input, { valores: () => ubicaciones, nombre: 'Ubicaciones' });
+
+/** Al elegir una saga ya creada se rellena su total, y solo queda poner el número. */
+function elegirSaga(nombre) {
+  const f = form();
+  const saga = sagas.find((s) => s.nombre === nombre);
+  f.saga_total.value = saga?.total ?? '';
+  sugerirTotal();
+  f.saga_orden.focus();
 }
 
 const opcionesFormato = (elegido) => FORMATOS.map((v) => el('option', { value: v, selected: v === elegido }, v));
@@ -642,6 +661,7 @@ export function iniciarFormulario({ despuesDeGuardar }) {
   $('#alta-tipo').replaceChildren(...TIPOS.map((t) => el('option', { value: t.clave }, t.singular)));
   $('#alta-formato').replaceChildren(...opcionesFormato());
   $('#campo-ubicacion').append(selectorUbicacion(f.ubicacion));
+  $('#campo-saga-nombre').append(selector(f.saga, { valores: () => sagas.map((s) => s.nombre), nombre: 'Sagas', alElegir: elegirSaga }));
   f.tipo.addEventListener('change', () => {
     f.formato.value = formatoPorDefecto(f.tipo.value);
     ajustar();

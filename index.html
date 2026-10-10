@@ -17,7 +17,7 @@
       "./js/duplicados.js": "./js/duplicados.js?v=da8accdedf",
       "./js/escaner.js": "./js/escaner.js?v=3e16c624e2",
       "./js/estado.js": "./js/estado.js?v=22b6b9350f",
-      "./js/formulario.js": "./js/formulario.js?v=d0db572332",
+      "./js/formulario.js": "./js/formulario.js?v=b0828898a8",
       "./js/github.js": "./js/github.js?v=beb215647d",
       "./js/isbn.js": "./js/isbn.js?v=ade2ed1db3",
       "./js/main.js": "./js/main.js?v=c9016a4f67",
@@ -179,9 +179,10 @@
       <details id="campo-saga" class="caja saga">
         <summary>Saga <span class="opcional">(opcional)</span></summary>
         <div class="saga-campos">
-          <label class="ancho">Nombre
-            <input name="saga" list="dl-sagas" autocomplete="off" placeholder="por ejemplo El Señor de los Anillos">
-          </label>
+          <div id="campo-saga-nombre" class="ancho campo-isbn">
+            <label for="alta-saga">Nombre</label>
+            <input id="alta-saga" name="saga" autocomplete="off" placeholder="Escribe una o elige de la lista">
+          </div>
           <label>Número
             <input name="saga_orden" type="number" inputmode="numeric" min="1" max="999">
           </label>
@@ -193,7 +194,6 @@
       <label>Notas
         <textarea name="notas" rows="2"></textarea>
       </label>
-      <datalist id="dl-sagas"></datalist>
 
       <p id="alta-error" class="error" role="alert"></p>
       <div id="alta-parecidos" class="parecidos" hidden>
