@@ -180,9 +180,8 @@ function abrirDetalle(tipo, item) {
       el('button', { type: 'button', class: 'enlace', onclick: () => abrirSaga(saga) },
         `${saga.nombre} · nº ${item.saga.orden} (${estadoSaga(saga, miembrosDe(saga)).texto})`)],
     ['Notas', item.notas],
-    ['Alta', [item.alta_por, item.alta_fecha].filter(Boolean).join(', ')],
+    ['Añadido por', item.alta_por],
     ['Modificado', [item.mod_por, item.mod_fecha].filter(Boolean).join(', ')],
-    ['Identificador', item.id],
   ].filter(([, valor]) => valor != null && valor !== '' && valor !== 0 && valor !== false);
 
   $('#detalle-contenido').replaceChildren(
