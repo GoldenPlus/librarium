@@ -21,7 +21,10 @@ export class ConflictoError extends Error {
 }
 
 export function codificarBase64(texto) {
-  const bytes = new TextEncoder().encode(texto);
+  return bytesABase64(new TextEncoder().encode(texto));
+}
+
+export function bytesABase64(bytes) {
   let binario = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(binario);
@@ -136,5 +139,22 @@ export function crearCliente({ token, repo, fetch: fetchImpl = (...a) => globalT
     throw new ConflictoError();
   }
 
-  return { comprobarRepo, leer, actualizar };
+  /** Sube un archivo nuevo (por ejemplo una foto de portada). `bytes`: Uint8Array. */
+  async function subirArchivo(ruta, bytes, mensaje) {
+    const res = await peticion(`/contents/${ruta}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: mensaje, content: bytesABase64(bytes) }),
+    });
+    if (!res.ok) throw new GitHubError(mensajeDeEstado(res.status, ruta), res.status);
+  }
+
+  /** Descarga un archivo del repo tal cual, como Blob. */
+  async function leerArchivo(ruta) {
+    const res = await peticion(`/contents/${ruta}`, { headers: { Accept: 'application/vnd.github.raw+json' } });
+    if (!res.ok) throw new GitHubError(mensajeDeEstado(res.status, ruta), res.status);
+    return res.blob();
+  }
+
+  return { comprobarRepo, leer, actualizar, subirArchivo, leerArchivo };
 }

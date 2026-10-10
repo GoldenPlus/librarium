@@ -97,3 +97,15 @@ test('claves.json se lee sin lista "items"', async () => {
   assert.equal((await cliente.leer('claves.json', { lista: false })).datos.tmdb, 't');
   await assert.rejects(cliente.leer('claves.json'), /items/);
 });
+
+test('subir un archivo binario lo manda en base64 sin sha', async () => {
+  let peticion;
+  const fetch = async (url, opciones) => {
+    peticion = { url, ...opciones };
+    return { ok: true, status: 201, json: async () => ({}) };
+  };
+  await crearCliente({ token: 't', repo: 'a/b', fetch }).subirArchivo('portadas/x.jpg', new Uint8Array([0xff, 0xd8, 0xff]), 'Portada');
+  assert.ok(peticion.url.endsWith('/repos/a/b/contents/portadas/x.jpg'));
+  assert.equal(peticion.method, 'PUT');
+  assert.deepEqual(JSON.parse(peticion.body), { message: 'Portada', content: '/9j/' });
+});

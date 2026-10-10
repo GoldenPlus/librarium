@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#7a3e1d">
   <title>Librarium</title>
   <!-- versiones: generado por npm run versionar -->
-  <link rel="stylesheet" href="css/app.css?v=f6617ae1cd">
+  <link rel="stylesheet" href="css/app.css?v=0fdc9a02fe">
   <script type="importmap">
   { "imports": {
       "./js/almacen.js": "./js/almacen.js?v=ce0367fb1e",
@@ -17,17 +17,20 @@
       "./js/duplicados.js": "./js/duplicados.js?v=da8accdedf",
       "./js/escaner.js": "./js/escaner.js?v=3e16c624e2",
       "./js/estado.js": "./js/estado.js?v=22b6b9350f",
-      "./js/formulario.js": "./js/formulario.js?v=15d176ceef",
-      "./js/github.js": "./js/github.js?v=beb215647d",
+      "./js/formulario.js": "./js/formulario.js?v=1c0dff36d3",
+      "./js/foto.js": "./js/foto.js?v=173287b2fa",
+      "./js/github.js": "./js/github.js?v=af6a875f0f",
       "./js/isbn.js": "./js/isbn.js?v=ade2ed1db3",
-      "./js/main.js": "./js/main.js?v=a5a6d1454c",
-      "./js/modelo.js": "./js/modelo.js?v=2192cafdc4",
+      "./js/main.js": "./js/main.js?v=ad68e3c0bd",
+      "./js/modelo.js": "./js/modelo.js?v=527fe67134",
+      "./js/portadas.js": "./js/portadas.js?v=46ff1f9f90",
+      "./js/recorte.js": "./js/recorte.js?v=b7afec7647",
       "./js/sagas.js": "./js/sagas.js?v=6d8fb25d11",
       "./js/texto.js": "./js/texto.js?v=cd9e68cb5e",
       "./js/tmdb.js": "./js/tmdb.js?v=7d9fcc65a4"
   } }
   </script>
-  <script type="module" src="js/main.js?v=a5a6d1454c"></script>
+  <script type="module" src="js/main.js?v=ad68e3c0bd"></script>
   <!-- /versiones -->
 </head>
 <body>
@@ -95,6 +98,24 @@
     </div>
   </dialog>
 
+  <!-- Recorte de la foto de portada -->
+  <dialog id="dlg-recorte" class="recorte">
+    <div class="cabeza-dialogo">
+      <h2>Recortar portada</h2>
+      <button id="recorte-cerrar" type="button" class="icono" aria-label="Cerrar">✕</button>
+    </div>
+    <p id="recorte-estado" class="ayuda" role="status"></p>
+    <div class="lienzo-recorte">
+      <canvas id="recorte-lienzo"></canvas>
+      <svg id="recorte-marco" preserveAspectRatio="none" aria-hidden="true"></svg>
+    </div>
+    <div class="botones">
+      <button id="recorte-repetir" type="button" class="secundario">Repetir foto</button>
+      <span class="hueco"></span>
+      <button id="recorte-usar" type="button">Usar foto</button>
+    </div>
+  </dialog>
+
   <!-- Detalle -->
   <dialog id="dlg-detalle">
     <div id="detalle-contenido" class="detalle"></div>
@@ -144,7 +165,11 @@
         <input type="hidden" name="tmdb">
         <input type="hidden" name="temporadas_total">
       </div>
-      <img id="alta-portada" class="portada-previa" alt="Portada" hidden>
+      <div class="fila-portada">
+        <img id="alta-portada" class="portada-previa" alt="Portada" hidden>
+        <button id="btn-foto" type="button" class="secundario">🖼️ Foto de portada</button>
+        <input id="foto-portada" type="file" accept="image/*" capture="environment" hidden>
+      </div>
       <input type="hidden" name="portada">
       <label>Título
         <input name="titulo" required autocomplete="off">

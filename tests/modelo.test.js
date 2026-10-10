@@ -69,3 +69,9 @@ test('ubicaciones únicas sin distinguir mayúsculas', () => {
   const items = [{ ubicacion: 'Estantería 2' }, { ubicacion: 'estantería 2' }, { temporadas: [{ ubicacion: 'Disco duro' }] }];
   assert.deepEqual(ubicacionesDe(items), ['Disco duro', 'Estantería 2']);
 });
+
+test('la portada puede ser una foto del repo, pero no cualquier cosa', () => {
+  assert.equal(construirItem('libros', { titulo: 'X', ubicacion: 'A', portada: 'repo:portadas/abc-123.jpg' }, opciones).portada, 'repo:portadas/abc-123.jpg');
+  assert.equal(construirItem('libros', { titulo: 'X', ubicacion: 'A', portada: 'repo:../claves.json' }, opciones).portada, '');
+  assert.equal(construirItem('libros', { titulo: 'X', ubicacion: 'A', portada: 'http://x/y.jpg' }, opciones).portada, '');
+});

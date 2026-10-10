@@ -71,3 +71,11 @@ test('comprobarEdicion solo avisa si cambia el título o la saga', () => {
   assert.throws(() => comprobarEdicion(items, libro, { ...libro, saga: { id: 'saga:libros:x', orden: 1 } }), /número 1/);
   assert.doesNotThrow(() => comprobarEdicion(items, libro, { ...libro, saga: { id: 'saga:libros:x', orden: 1 } }, { forzar: true }));
 });
+
+test('al editar, una foto nueva sustituye la portada y sin portada se conserva', () => {
+  const conFoto = editarItem({ ...libro, portada: 'https://covers.openlibrary.org/b/id/1-M.jpg' }, 'libros', campos({ portada: 'repo:portadas/abc123.jpg' }), opciones);
+  assert.equal(conFoto.portada, 'repo:portadas/abc123.jpg');
+  const sin = editarItem({ ...libro, portada: 'https://covers.openlibrary.org/b/id/1-M.jpg' }, 'libros', campos({ portada: '' }), opciones);
+  assert.equal(sin.portada, 'https://covers.openlibrary.org/b/id/1-M.jpg');
+  assert.equal(editarItem(libro, 'libros', campos({ portada: 'javascript:alert(1)' }), opciones).portada, libro.portada);
+});

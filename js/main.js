@@ -1,6 +1,6 @@
 // Interfaz: pestañas, listado, búsqueda, ficha, sagas, ajustes y arranque.
 
-import { TIPOS, TIPO, conAutor, dondeEsta, textoTemporadas } from './modelo.js';
+import { TIPOS, TIPO, conAutor, dondeEsta, esPortada, textoTemporadas } from './modelo.js';
 import { guardarConfig, normalizarRepo } from './config.js';
 import { crearCliente } from './github.js';
 import { terminosDe, coincide } from './busqueda.js';
@@ -9,6 +9,7 @@ import { compararTitulos, limpiar } from './texto.js';
 import { app, sagaDe } from './estado.js';
 import { $, el, aviso, fechaLegible, ocupado } from './dom.js';
 import { abrirAlta, abrirEdicion, abrirEscaner, iniciarFormulario } from './formulario.js';
+import { imagenPortada } from './portadas.js';
 
 const CLAVE_AGRUPAR = 'librarium.agrupar';
 
@@ -50,7 +51,7 @@ function pintarPestanas() {
 }
 
 function portada(item, tipo) {
-  if (/^https:\/\//.test(item?.portada ?? '')) return el('img', { class: 'portada', src: item.portada, alt: '', loading: 'lazy' });
+  if (esPortada(item?.portada)) return imagenPortada(item.portada, { class: 'portada' });
   return el('div', { class: 'portada vacia', 'aria-hidden': 'true' }, TIPO[tipo].icono);
 }
 

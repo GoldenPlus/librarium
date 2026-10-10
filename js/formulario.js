@@ -9,6 +9,8 @@ import { datosCamara, escanearIsbn, guardarFotograma } from './escaner.js';
 import { crearTmdb } from './tmdb.js';
 import { app, claveDe, sagaDe } from './estado.js';
 import { normalizar } from './texto.js';
+import { sacarFotoPortada } from './foto.js';
+import { urlPortada, recordarPortada } from './portadas.js';
 import { $, el, aviso, ocupado } from './dom.js';
 
 const form = () => $('#form-alta');
@@ -52,6 +54,7 @@ function ajustar() {
   $('#campo-autor').hidden = !conAutor(tipo);
   $('#etiqueta-autor').textContent = TIPO[tipo].autor ?? '';
   $('#campo-saga').hidden = !CON_SAGA.includes(tipo);
+  $('#btn-foto').hidden = !TIPO[tipo].isbn;
 
   ubicaciones = ubicacionesDe(TIPOS.flatMap((t) => app.almacen.items(t.clave)));
   sagas = app.almacen.items('sagas').filter((s) => s.tipo === tipo).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true }));
@@ -226,14 +229,61 @@ function estadoIsbn(texto, esError = false) {
   nodo.classList.toggle('error', esError);
 }
 
-function ponerPortada(url) {
+/** Foto de portada sacada en este formulario y aún sin subir: { valor, blob, url, subida }. */
+let fotoPendiente = null;
+
+function olvidarFoto() {
+  if (fotoPendiente) URL.revokeObjectURL(fotoPendiente.url);
+  fotoPendiente = null;
+}
+
+/** `valor`: dirección https o foto del repo («repo:portadas/…»), o vacío. */
+function ponerPortada(valor) {
   const f = form();
   const img = $('#alta-portada');
-  f.portada.value = url || '';
-  img.hidden = !url;
+  f.portada.value = valor || '';
+  img.hidden = !valor;
   img.onerror = () => (img.hidden = true);
-  if (url) img.src = url;
-  else img.removeAttribute('src');
+  img.removeAttribute('src');
+  if (!valor) return;
+  if (fotoPendiente?.valor === valor) {
+    img.src = fotoPendiente.url;
+    return;
+  }
+  urlPortada(valor).then((url) => {
+    if (f.portada.value !== valor) return; // Ya se ha cambiado por otra.
+    if (url) img.src = url;
+    else img.hidden = true;
+  });
+}
+
+/** La portada de una búsqueda no sustituye a una foto que acabas de sacar. */
+function portadaEncontrada(url) {
+  if (!fotoPendiente) ponerPortada(url);
+}
+
+async function hacerFoto() {
+  limpiarMensajes();
+  try {
+    const blob = await sacarFotoPortada();
+    if (!blob) return;
+    olvidarFoto();
+    const nombre = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
+    fotoPendiente = { valor: `repo:portadas/${nombre}.jpg`, blob, url: URL.createObjectURL(blob), subida: false };
+    ponerPortada(fotoPendiente.valor);
+  } catch (e) {
+    mostrarError(e.message);
+  }
+}
+
+/** Sube la foto al repo de datos (solo una vez, aunque haya que reintentar el guardado). */
+async function subirFoto(titulo) {
+  const foto = fotoPendiente;
+  if (foto.subida) return;
+  const ruta = foto.valor.slice('repo:'.length);
+  await app.cliente.subirArchivo(ruta, new Uint8Array(await foto.blob.arrayBuffer()), `Portada: ${titulo} (por ${app.config.nombre})`);
+  foto.subida = true;
+  await recordarPortada(foto.valor, foto.blob);
 }
 
 /** Título con este ISBN en libros o cómics, para avisar antes de buscar datos. */
@@ -284,7 +334,7 @@ async function procesarIsbn(texto, { enfocar = true } = {}) {
   if (datos.titulo) f.titulo.value = datos.titulo;
   if (datos.autor) f.autor.value = datos.autor;
   if (datos.anio) f.anio.value = datos.anio;
-  ponerPortada(datos.portada);
+  portadaEncontrada(datos.portada);
   const conSaga = proponerSaga(datos.saga) ? ', con la saga sacada del título' : '';
   estadoIsbn(`Datos de ${datos.fuente}${conSaga}. Revísalos, elige la ubicación y guarda.`);
   if (enfocar) f.ubicacion.focus();
@@ -326,7 +376,7 @@ function elegirLibro(libro) {
   f.titulo.value = libro.titulo;
   if (libro.autor) f.autor.value = libro.autor;
   f.anio.value = libro.anio ?? '';
-  ponerPortada(libro.portada);
+  portadaEncontrada(libro.portada);
   f.isbn.value = libro.isbn;
   const conSaga = proponerSaga(libro.saga) ? ', con la saga sacada del título' : '';
   const sinIsbn = libro.isbn ? '' : ' Sin ISBN: si el libro lo tiene, escríbelo.';
@@ -505,6 +555,7 @@ export function abrirAlta(tipoPorDefecto) {
   $('#campo-saga').open = false;
   $('#filas-temporadas').replaceChildren();
   limpiarTmdb();
+  olvidarFoto();
   ponerPortada('');
   estadoIsbn('');
   $('#isbn-resultados').replaceChildren();
@@ -528,7 +579,8 @@ export function abrirEdicion(tipo, item) {
   $('#campo-saga').open = Boolean(f.saga.value);
   $('#filas-temporadas').replaceChildren(...(item.temporadas ?? []).map(filaTemporada));
   limpiarTmdb();
-  ponerPortada('');
+  olvidarFoto();
+  ponerPortada(item.portada ?? '');
   estadoIsbn('');
   limpiarMensajes();
   ajustar();
@@ -590,6 +642,7 @@ async function guardar(forzar) {
 
   const listo = ocupado($('#alta-guardar'), 'Guardando…');
   try {
+    if (fotoPendiente && item.portada === fotoPendiente.valor) await subirFoto(item.titulo);
     if (saga) await asegurarSagaRemota(tipo, saga);
     // Segunda comprobación contra la versión más reciente del fichero, dentro del ciclo de reintento.
     const mutar = m.edicion
@@ -691,6 +744,7 @@ export function iniciarFormulario({ despuesDeGuardar }) {
   const buscarLibroOTitulo = () => (f.isbn.value.trim() ? procesarIsbn(f.isbn.value) : buscarTitulo());
   $('#btn-buscar-isbn').addEventListener('click', buscarLibroOTitulo);
   $('#btn-escanear').addEventListener('click', abrirEscaner);
+  $('#btn-foto').addEventListener('click', hacerFoto);
   f.isbn.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
@@ -698,7 +752,7 @@ export function iniciarFormulario({ despuesDeGuardar }) {
   });
   // Un ISBN distinto invalida la portada y los mensajes del anterior.
   f.isbn.addEventListener('input', () => {
-    ponerPortada('');
+    portadaEncontrada('');
     estadoIsbn('');
     $('#isbn-resultados').replaceChildren();
   });

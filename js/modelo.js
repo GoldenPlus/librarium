@@ -28,6 +28,9 @@ export function normalizarFormato(valor) {
   return texto.toLocaleLowerCase('es') === 'digital' ? 'Digital' : 'Físico';
 }
 
+/** Portada válida: una dirección https (Open Library, Google Books, TMDB) o una foto del repo de datos. */
+export const esPortada = (valor) => /^https:\/\//.test(valor ?? '') || /^repo:portadas\/[a-z0-9-]+\.jpg$/.test(valor ?? '');
+
 export class ValidacionError extends Error {
   constructor(mensaje) {
     super(mensaje);
@@ -159,7 +162,7 @@ export function construirItem(tipo, campos, { nombre, fecha = hoy(), generarId =
     anio: leerAnio(campos.anio),
     formato,
     ubicacion,
-    portada: /^https:\/\//.test(campos.portada ?? '') ? campos.portada : '',
+    portada: esPortada(campos.portada) ? campos.portada : '',
     notas: String(campos.notas ?? '').trim(),
     alta_por: nombre,
     alta_fecha: fecha,
@@ -207,6 +210,8 @@ export function editarItem(original, tipo, campos, { nombre, fecha = hoy() }) {
   else delete item.autor;
   item.anio = leerAnio(campos.anio);
   item.notas = String(campos.notas ?? '').trim();
+  // Una portada nueva (por ejemplo una foto) sustituye a la anterior; sin portada se conserva la que hubiera.
+  if (esPortada(campos.portada)) item.portada = campos.portada;
   if (llevaTemporadas(tipo, original.subtipo)) {
     item.temporadas = validarTemporadas(campos.temporadasDetalle);
   } else {
